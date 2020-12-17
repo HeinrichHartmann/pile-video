@@ -1,8 +1,4 @@
-# youtube-dl-nas Server Dockerfile
-# https://github.com/hyeonsangjeon/youtube-dl-nas.git
-
-FROM python:3-onbuild
-LABEL maintainer="wingnut0310 <wingnut0310@gmail.com>"
+FROM python:3
 
 # Install ffmpeg.
 #https://unix.stackexchange.com/questions/508724/failed-to-fetch-jessie-backports-repository
@@ -13,8 +9,14 @@ RUN apt-get -o Acquire::Check-Valid-Until=false update
 RUN apt-get install -y libav-tools vim dos2unix && \
     rm -rf /var/lib/apt/lists/*
 
+RUN pip install -U youtube-dl
 
-COPY /subber /usr/bin/subber 
+RUN mkdir -p /usr/src/app
+WORKDIR /usr/src/app
+COPY requirements.txt /usr/src/app/
+RUN pip install -r requirements.txt
+
+COPY /subber /usr/bin/subber
 COPY /run.sh /
 RUN chmod +x /usr/bin/subber && \
      dos2unix /usr/bin/subber && \
@@ -22,11 +24,10 @@ RUN chmod +x /usr/bin/subber && \
      chmod +x /run.sh && \
      dos2unix /run.sh
 
-RUN pip install -U youtube-dl
+COPY . /usr/src/app
 
 EXPOSE 8080
 
 VOLUME ["/downfolder"]
 
 CMD [ "/bin/bash", "/run.sh" ]
-#CMD [ "python", "-u", "./youtube-dl-server.py" ]
