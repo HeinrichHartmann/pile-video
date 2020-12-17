@@ -25,32 +25,11 @@ def dl_queue_list():
 
 @get('/login', method='POST')
 def dl_queue_login():
-    with open('Auth.json') as data_file:
-        data = json.load(data_file)  # Auth info, when docker run making file
-        req_id = request.forms.get("id")
-        req_pw = request.forms.get("myPw")
-
-        if (req_id == data["MY_ID"] and req_pw == data["MY_PW"]):
-            response.set_cookie("account", req_id, secret="34y823423b23b4234#$@$@#be")
-            redirect("/youtube-dl")
-        else:
-            return template("./static/template/login.tpl", msg="id or password is not correct")
-
+    redirect("/youtube-dl")
 
 @get('/youtube-dl')
 def dl_queue_list():
-    with open('Auth.json') as data_file:
-        data = json.load(data_file)
-
-    userNm = request.get_cookie("account", secret="34y823423b23b4234#$@$@#be")
-    print("CHK : ", userNm)
-
-    if (userNm == data["MY_ID"]):
-        return template("./static/template/index.tpl", userNm=userNm)
-    else:
-        print("no cookie or fail login")
-        redirect("/")
-
+    return template("./static/template/index.tpl", userNm=userNm)
 
 @get('/websocket', apply=[websocket])
 def echo(ws):
@@ -98,19 +77,9 @@ def q_put():
 def q_put_rest():
     url = request.json.get("url")
     resolution = request.json.get("resolution")
-
-    with open('Auth.json') as data_file:
-        data = json.load(data_file)  # Auth info, when docker run making file
-        req_id = request.json.get("id")
-        req_pw = request.json.get("pw")
-
-        if (req_id != data["MY_ID"] or req_pw != data["MY_PW"]):
-            return {"success": False, "msg": "Invalid password or account."}
-        else:
-            box = (url, "", resolution, "api")
-            dl_q.put(box)
-            return {"success": True, "msg": 'download has started', "Remaining downloading count": json.dumps(dl_q.qsize()) }
-
+    box = (url, "", resolution, "api")
+    dl_q.put(box)
+    return {"success": True, "msg": 'download has started', "Remaining downloading count": json.dumps(dl_q.qsize()) }
 
 def dl_worker():
     while not done:
