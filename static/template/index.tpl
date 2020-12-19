@@ -24,11 +24,8 @@
         <div class="cover-container">
 
             <div class="inner cover">
-                <h1 class="cover-heading">Let's Download </h1>
-                <p class="lead">Url can be download from YouTube or <a href="https://rg3.github.io/youtube-dl/supportedsites.html">any other supported site</a>.<br> The downloading state is passed to the server side event web socket.</p>
-
-                <p class="lead">Welcome {{userNm}}</p>
-
+                <h1 class="cover-heading">youtube-dl</h1>
+                <p class="lead">Download files to YouTube or other streaming sites. Downloaded files are stored at /share/garage/YTDL</p>
                 <div class="row">
                     <form id="form1">
                         <div class="input-group">
@@ -59,10 +56,8 @@
                     </form>
                 </div>
             </div>
-
             <p class"lead"><div id="messages"></div></p>
             <p class"lead"><div id="queue"></div></p>
-
             <div class="table-responsive" style="overflow: hidden;">
                 <div style="overflow-y:auto; height:150px; width:auto; " >
                     <table class="table" style="color: #262626;">
