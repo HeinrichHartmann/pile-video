@@ -20,23 +20,13 @@ proxy = ""
 
 @get('/')
 def dl_queue_list():
-    return template("./static/template/login.tpl", msg="")
-
-
-@get('/login', method='POST')
-def dl_queue_login():
-    redirect("/youtube-dl")
-
-@get('/youtube-dl')
-def dl_queue_list():
-    return template("./static/template/index.tpl", userNm=userNm)
+    return template("./static/template/index.tpl")
 
 @get('/websocket', apply=[websocket])
 def echo(ws):
     while True:
         WSAddr.wsClassVal = ws
         msg = WSAddr.wsClassVal.receive()
-
         if msg is not None:
             a = '[MSG], Started downloading  : '
             a = a + msg
@@ -48,25 +38,20 @@ def echo(ws):
 def server_static(filename):
     return static_file(filename, root='./static')
 
-
 @get('/youtube-dl/q', method='GET')
 def q_size():
     return {"success": True, "size": json.dumps(list(dl_q.queue))}
-
 
 @get('/youtube-dl/q', method='POST')
 def q_put():
     url = request.json.get("url")
     resolution = request.json.get("resolution")
-
     if "" != url:
         box = (url, WSAddr.wsClassVal, resolution, "web")
         dl_q.put(box)
-
-        if (Thr.dl_thread.isAlive() == False):
+        if (Thr.dl_thread.is_alive() == False):
             thr = Thr()
             thr.restart()
-
         return {"success": True, "msg": '[MSG], We received your download. Please wait.'}
     else:
         return {"success": False, "msg": "[MSG], download queue somethings wrong."}
@@ -138,14 +123,6 @@ dl_q = Queue()
 done = False
 Thr.dl_thread = Thread(target=dl_worker)
 Thr.dl_thread.start()
-
-with open('Auth.json') as env_file:
-    data = json.load(env_file)  # Auth info, when docker run making file
-
-if (data['APP_PORT'] !=''):
-    port = data['APP_PORT']
-if (data['PROXY'] !=''):
-    proxy = data['PROXY']
 
 run(host='0.0.0.0', port=port, server=GeventWebSocketServer)
 
