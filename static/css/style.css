@@ -136,7 +136,7 @@ body {
  * Affix and center
  */
 
-@media (min-width: 768px) {
+@media (min-width: 600px) {
   /* Pull out the header and footer */
   .masthead {
     position: fixed;
@@ -156,9 +156,9 @@ body {
     /* Must be percentage or pixels for horizontal alignment */
   }
 }
-@media (min-width: 992px) {
+@media (min-width: 600px) {
   .masthead, .mastfoot, .cover-container {
-    width: 700px;
+    width: 500px;
   }
 }
 

@@ -5,16 +5,12 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-
     <meta name="description" content="">
     <meta name="author" content="">
     <link rel="icon" href="../../favicon.ico">
-
     <title>youtube-dl</title>
-
     <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css" rel="stylesheet">
     <link href="youtube-dl/static/css/style.css" rel="stylesheet">
-
 </head>
 
 <body>
@@ -22,31 +18,13 @@
 <div class="site-wrapper">
     <div class="site-wrapper-inner">
         <div class="cover-container">
-
             <div class="inner cover">
                 <h1 class="cover-heading">youtube-dl</h1>
-                <p class="lead">Download files to YouTube or other streaming sites. Downloaded files are stored at /share/garage/YTDL</p>
+                <p class="lead">Download files from YouTube or other streaming sites.</p>
                 <div class="row">
                     <form id="form1">
                         <div class="input-group">
-                            <!--<input name="url" id="url" type="url" class="form-control" placeholder="URL" value="https://www.youtube.com/watch?v=uMdgjd4x6wo">-->
-                            <span class="input-group-btn">
-                                <select title="Pick a number" id="selResolution" class="form-control" style="width:100px;">
-                                    <option>best</option>
-                                    <option>2160p</option>
-                                    <option>1440p</option>
-                                    <option>1080p</option>
-                                    <option>720p</option>
-                                    <option>480p</option>
-                                    <option>360p</option>
-                                    <option>240p</option>
-                                    <option>144p</option>
-                                    <option>audio-m4a</option>
-                                    <option>audio-mp3</option>
-                                </select>
-                            </span>
                             <input name="url" id="url" type="url" class="form-control" placeholder="URL" >
-
                             <span class="input-group-btn">
                                 <button href="#" id ="send" class="btn btn-primary" >
                                   <span class="glyphicon glyphicon-share-alt"  aria-hidden="true"></span> Submit
@@ -68,7 +46,6 @@
                             </tr>
                         </thead>
                         <tbody id="completeInfo">
-
                         </tbody>
                     </table>
                 </div>
