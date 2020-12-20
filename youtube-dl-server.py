@@ -32,7 +32,7 @@ def send(msg):
             L("> " + msg)
             ws.send(msg) 
         except error as e:
-            L(ws, e)
+            L(f"> ws {ws} failed. Closing.")
             WS.remove(ws)
 
 @get('/')

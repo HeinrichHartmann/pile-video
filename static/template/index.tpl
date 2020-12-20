@@ -9,7 +9,7 @@
     <meta name="author" content="">
     <link rel="icon" href="../../favicon.ico">
     <title>youtube-dl</title>
-    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css" rel="stylesheet">
+    <link href="youtube-dl/static/vendor/bootstrap.min.css" rel="stylesheet">
     <link href="youtube-dl/static/css/style.css" rel="stylesheet">
 </head>
 
@@ -47,8 +47,8 @@
 </div>
 
 
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
+<script src="youtube-dl/static/vendor/jquery.min.js"></script>
+<script src="youtube-dl/static/vendor/bootstrap.min.js"></script>
 <script src="youtube-dl/static/logical_js/logic.js"></script>
 </body>
 
