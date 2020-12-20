@@ -4,22 +4,14 @@
 
 
 /* Links */
-
-a, a:focus, a:hover {
-  color: #fff;
-}
-.lead a {
+a {
   color: #268bd2;
 }
 
 /* Custom default button */
-
 .btn-default, .btn-default:hover, .btn-default:focus {
-  color: #333;
-  text-shadow: none;
   /* Prevent inheritence from `body` */
-  background-color: #fff;
-  border: 1px solid #fff;
+  border: 1px solid #333;
 }
 
 /*
@@ -28,24 +20,19 @@ a, a:focus, a:hover {
 
 html, body {
   height: 100%;
-  background-color: #50afb7;
+  background-color: #fff;
 }
 body {
-  color: #fff;
-  text-align: center;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, .5);
+  color: #333;
 }
 
 /* Extra markup and styles for table-esque vertical and horizontal centering */
-
 .site-wrapper {
   display: table;
   width: 100%;
   height: 100%;
   /* For at least Firefox */
   min-height: 100%;
-  -webkit-box-shadow: inset 0 0 100px rgba(0, 0, 0, .5);
-  box-shadow: inset 0 0 100px rgba(0, 0, 0, .5);
 }
 .site-wrapper-inner {
   display: table-cell;
@@ -57,12 +44,15 @@ body {
 }
 
 /* Padding for spacing */
-
 .inner {
   padding: 30px;
 }
 
-
+#log {
+    width : 100%;
+    font-size: 9pt;
+    max-height: 350px;
+}
 
 /*
  * Header
@@ -125,7 +115,7 @@ body {
 .mastfoot {
   color: #999;
   /* IE8 proofing */
-  color: rgba(255, 255, 255, .5);
+  color: rgba(20, 20, 20, .5);
 }
 
 .jhs {
@@ -136,7 +126,7 @@ body {
  * Affix and center
  */
 
-@media (min-width: 600px) {
+@media (min-width: 650px) {
   /* Pull out the header and footer */
   .masthead {
     position: fixed;
@@ -150,15 +140,8 @@ body {
   .site-wrapper-inner {
     vertical-align: middle;
   }
-  /* Handle the widths */
   .masthead, .mastfoot, .cover-container {
-    width: 100%;
-    /* Must be percentage or pixels for horizontal alignment */
-  }
-}
-@media (min-width: 600px) {
-  .masthead, .mastfoot, .cover-container {
-    width: 500px;
+    width: 650px;
   }
 }
 

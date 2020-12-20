@@ -20,7 +20,7 @@
         <div class="cover-container">
             <div class="inner cover">
                 <h1 class="cover-heading">youtube-dl</h1>
-                <p class="lead">Download files from YouTube or other streaming sites.</p>
+                <p class="lead">Download files with <a href="https://github.com/ytdl-org/youtube-dl">youtube-dl</a>.</p>
                 <div class="row">
                     <form id="form1">
                         <div class="input-group">
@@ -34,32 +34,14 @@
                     </form>
                 </div>
             </div>
-            <p class"lead"><div id="messages"></div></p>
-            <p class"lead"><div id="queue"></div></p>
-            <div class="table-responsive" style="overflow: hidden;">
-                <div style="overflow-y:auto; height:150px; width:auto; " >
-                    <table class="table" style="color: #262626;">
-                        <thead id="thd">
-                            <tr>
-                                <th><p class="text-center">resolution</p></th>
-                                <th><p class="text-center">completed url</p></th>
-                            </tr>
-                        </thead>
-                        <tbody id="completeInfo">
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
+            <hr/>
+            <pre id="log"></pre>
             <div class="mastfoot">
+              <hr/>
                 <div class="inner">
-                    <p>Web frontend for <a href="https://github.com/hyeonsangjeon/youtube-dl-nas">youtube-dl-nas</a>, by @Hyeon Sang</a>.</p>
-                    <p>latest Ver 0.1113</p>
-                    <a href="https://www.youtube.com/watch?v=s9mO5q6GiAc">https://www.youtube.com/watch?v=s9mO5q6GiAc</a>
-                    <p></p>
+                    <p>Adapted from <a href="https://github.com/hyeonsangjeon/youtube-dl-nas">youtube-dl-nas</a>, by @Hyeon Sang</a>.</p>
                 </div>
             </div>
-
         </div>
     </div>
 </div>
