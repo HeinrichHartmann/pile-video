@@ -2,7 +2,11 @@ $(function () {
     function print(msg){
         $('#log').prepend(msg + "\n");
     };
-    ws_url = 'ws://'+window.location.host+'/websocket';
+    if (window.location.protocol == "https:") {
+        ws_url = 'wss://'+window.location.host+'/websocket';
+    } else {
+        ws_url = 'ws://'+window.location.host+'/websocket';
+    }
     ws = new WebSocket(ws_url);
     console.log(ws_url);
     ws.onopen = function(evt) {
