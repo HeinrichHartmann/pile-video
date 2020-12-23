@@ -47,9 +47,9 @@ def echo(ws):
     L(ws.receive())
     ws.send(f"Downloads queued {dl_q.qsize()}\n")
 
-@get('/youtube-dl/static/:filename#.*#')
-def server_static(filename):
-    return static_file(filename, root='./static')
+@get('/youtube-dl/static/<filepath:path>')
+def server_static(filepath):
+    return static_file(filepath, root='./static')
 
 @get('/youtube-dl/q', method='GET')
 def q_size():
