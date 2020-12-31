@@ -3,6 +3,7 @@ import subprocess
 from queue import Queue
 import io
 import sys
+from pathlib import Path
 
 from datetime import date
 from bottle import run, Bottle, request, static_file, response, redirect, template, get
@@ -38,6 +39,22 @@ def send(msg):
 @get('/')
 def dl_queue_list():
     return template("./static/template/index.tpl")
+
+@get('/gallery')
+def gallery():
+    videos = [
+        {
+            "name" : p.name,
+            "src"  : "/video/" + "/".join(p.parts[1:] )
+        }
+        for p in Path("./downfolder").glob('**/*.mp4')
+    ]
+    print(videos)
+    return template("./static/template/gallery.tpl", { "videos" : videos })
+
+@get('/video/<filepath:path>')
+def video(filepath):
+    return static_file(filepath, root='./downfolder')
 
 @get('/websocket', apply=[websocket])
 def echo(ws):
