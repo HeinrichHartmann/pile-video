@@ -31,10 +31,11 @@ def send(msg):
     for ws in WS.copy():
         try:
             L("> " + msg)
-            ws.send(msg) 
+            ws.send(msg)
         except error as e:
             L(f"> ws {ws} failed. Closing.")
-            WS.remove(ws)
+            if ws in WS:
+                WS.remove(ws)
 
 @get('/')
 def dl_queue_list():
