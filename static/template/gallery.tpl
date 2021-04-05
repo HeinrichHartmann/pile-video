@@ -10,7 +10,7 @@
     <title>youtube-dl</title>
     <link href="youtube-dl/static/vendor/bootstrap.min.css" rel="stylesheet">
     <link href="youtube-dl/static/css/gallery-style.css" rel="stylesheet">
-    <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
+    <link href="youtube-dl/static/vendor/tailwind.min.css" rel="stylesheet">
   </head>
   <body>
     <div class="site-wrapper">
