@@ -18,7 +18,7 @@
         <div class="cover-container">
           <div class="inner cover">
             <h1 class="cover-heading">Video Gallery</h1>
-            <p><a href="/">DOWNLOAD</a></p>
+            <p><a href="/download">DOWNLOAD</a></p>
             <div id="row">
               <div style="width:650px; margin-right:auto; margin-left:auto">
                 <form id="form1">

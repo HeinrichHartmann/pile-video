@@ -24,17 +24,19 @@ app = Bottle()
 port = 8080
 proxy = ""
 
-def L(*args):
-    print(*args, file=sys.stderr)
+import logging
+logging.basicConfig(format='%(asctime)s [%(levelname)s] %(message)s')
+L = logging.getLogger(__name__)
+L.setLevel(logging.DEBUG)
 
 WS = []
 def send(msg):
     for ws in WS.copy():
         try:
-            L("> " + msg)
+            L.debug("> " + msg)
             ws.send(msg)
         except error as e:
-            L(f"> ws {ws} failed. Closing.")
+            L.debug(f"> ws {ws} failed. Closing.")
             if ws in WS:
                 WS.remove(ws)
 
@@ -49,10 +51,11 @@ def pcall(cmd):
     return p
 
 
-@get('/')
+@get('/download')
 def dl_queue_list():
-    return template("./static/template/index.tpl")
+    return template("./static/template/download.tpl")
 
+@get('/')
 @get('/gallery')
 def gallery():
     VIDEO_EXT = { ".mkv", ".webm", ".mp4" }
@@ -87,10 +90,10 @@ def video(filepath):
 
 @get('/websocket', apply=[websocket])
 def echo(ws):
-    L(f"New WebSocket {ws} total={len(WS)}")
+    L.debug(f"New WebSocket {ws} total={len(WS)}")
     WS.append(ws)
     # need to receive once so socket gets not closed
-    L(ws.receive())
+    L.debug(ws.receive())
     ws.send(f"Downloads queued {dl_q.qsize()}\n")
 
 @get('/youtube-dl/static/<filepath:path>')
@@ -120,7 +123,7 @@ def q_put():
         return {"success": False, "msg": "Failed"}
 
 def dl_worker():
-    L("Worker starting")
+    L.info("Worker starting")
     while not done:
         item = dl_q.get()
         download(item)
@@ -175,7 +178,7 @@ def download(req):
             send("[Failed] " + url)
             return
     except error as e:
-        L(e)
+        L.error(e)
         send("[Failed]" + str(e))
         return
 
