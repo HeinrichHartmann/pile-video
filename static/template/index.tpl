@@ -21,6 +21,7 @@
             <div class="inner cover">
                 <h1 class="cover-heading">youtube-dl</h1>
                 <p class="lead">Download files with <a href="https://github.com/ytdl-org/youtube-dl">youtube-dl</a>.</p>
+                <p><a href="/gallery">GALLERY</a></p>
                 <div class="row">
                     <form id="form1">
                         <div class="input-group">
@@ -36,12 +37,6 @@
             </div>
             <hr/>
             <pre id="log"></pre>
-            <div class="mastfoot">
-              <hr/>
-                <div class="inner">
-                    <p>Adapted from <a href="https://github.com/hyeonsangjeon/youtube-dl-nas">youtube-dl-nas</a>, by @Hyeon Sang</a>.</p>
-                </div>
-            </div>
         </div>
     </div>
 </div>

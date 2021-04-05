@@ -4,6 +4,7 @@ from queue import Queue
 import io
 import sys
 from pathlib import Path
+import re
 
 from datetime import date
 from bottle import run, Bottle, request, static_file, response, redirect, template, get
@@ -37,25 +38,52 @@ def send(msg):
             if ws in WS:
                 WS.remove(ws)
 
+
+def pcall(cmd):
+    send(f"Running {cmd}")
+    p = subprocess.run(cmd, capture_output=True, text=True, encoding="ASCII")
+    if p.returncode != 0:
+        msg = f"Error executing {cmd}\ncode:{p.returncode}\nout:{p.stdout}\nerr:{p.stderr}"
+        send(msg)
+        raise Exception(msg)
+    return p
+
+
 @get('/')
 def dl_queue_list():
     return template("./static/template/index.tpl")
 
 @get('/gallery')
 def gallery():
+    VIDEO_EXT = { ".mkv", ".webm", ".mp4" }
+    paths = [
+        p for p in Path("./videos").glob('**/*') if
+        (p.suffix in VIDEO_EXT)
+        and
+        ( not p.name.startswith("."))
+    ]
+    re_date = re.compile("\d\d\d\d\-\d\d-\d\d.*")
+    A = []
+    B = []
+    for p in paths:
+        if re_date.match(p.name):
+            A.append(p)
+        else:
+            B.append(p)
+    A = sorted(A, reverse=True)
+    paths = A + B
     videos = [
         {
             "name" : p.name,
-            "src"  : "/video/" + "/".join(p.parts[1:] )
+            "src"  : "/video/" + "/".join(p.parts[1:])
         }
-        for p in Path("./downfolder").glob('**/*.mp4')
+        for p in paths
     ]
-    print(videos)
     return template("./static/template/gallery.tpl", { "videos" : videos })
 
 @get('/video/<filepath:path>')
 def video(filepath):
-    return static_file(filepath, root='./downfolder')
+    return static_file(filepath, root='./videos')
 
 @get('/websocket', apply=[websocket])
 def echo(ws):
@@ -109,15 +137,25 @@ def download(box):
     ws = box[1]
     # result = subprocess.run()
     send(f"Starting download of {url}")
-    proc = subprocess.Popen([
+    cmd = [
     "youtube-dl",
         "--no-progress",
         "--restrict-filenames",
-        "--format", "bestvideo[height<=760]",
-        "--recode-video", "mp4",
-        "-o", f"./downfolder/{today} %(title)s via %(uploader)s.%(ext)s",
-        url
-    ], stdout=subprocess.PIPE)
+        "--format", "bestvideo[height<=760]+bestaudio",
+        # Often sensible video and audio streams are only available separately,
+        # so we need to merge the resulting file. Recoding a video to mp4
+        # with A+V can take a lot of time, so we opt for an open container format:
+        # Option A: Recode Video
+        # "--recode-video", "mp4",
+        # "--postprocessor-args", "-strict experimental", # allow use of mp4 encoder
+        # Option B: Use container format
+        # "--merge-output-format", "webm",
+        "-o", f"./downloads/{today} %(title)s via %(uploader)s.%(ext)s",
+        url,
+        # "--verbose",
+    ]
+    send("[youtube-dl] " + " ".join(cmd))
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     for line in proc.stdout:
         send("[youtube-dl] " + line.decode("ASCII").rstrip("\n"))
     code = proc.wait()
@@ -127,9 +165,23 @@ def download(box):
             send("[Finished] " + url + ". Remaining: "+ json.dumps(dl_q.qsize()))
         else:
             send("[Failed] " + url)
+            return
     except error as e:
         L(e)
-        send("[Failed]" + str(e)) 
+        send("[Failed]" + str(e))
+        return
+
+    p = pcall(cmd + ["--get-filename"])
+    fn = p.stdout.rstrip("\n")
+    # The filename is not actually accurate. The extension might be wrongly detected.
+    # Let's glob this:
+    fn = str(list(Path(".").glob(str(Path(fn).with_suffix("")) + "*"))[0])
+    p = pcall([
+            "ffmpeg", "-y", "-i", fn,
+            "-ss", "00:00:20.000", "-vframes", "1",
+            fn + ".png"
+    ])
+    send("Done.")
 
 class Thr:
     def __init__(self):
@@ -138,7 +190,6 @@ class Thr:
     def restart(self):
         self.dl_thread = Thread(target=dl_worker)
         self.dl_thread.start()
-
 
 dl_q = Queue()
 done = False
@@ -150,3 +201,4 @@ run(host='0.0.0.0', port=port, server=GeventWebSocketServer, reloader=True)
 done = True
 
 Thr.dl_thread.join()
+ 
