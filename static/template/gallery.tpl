@@ -10,7 +10,6 @@
     <title>youtube-dl</title>
     <link href="youtube-dl/static/vendor/bootstrap.min.css" rel="stylesheet">
     <link href="youtube-dl/static/css/gallery-style.css" rel="stylesheet">
-    <link href="youtube-dl/static/vendor/tailwind.min.css" rel="stylesheet">
   </head>
   <body>
     <div class="site-wrapper">
@@ -36,7 +35,8 @@
                   <span class="vid-title">
                     <a href="{{video["src"]}}">{{video["name"]}}</a>
                   </span>
-                  <video controls class="player" data-poster="{{video["src"]}}.png" preload="none">
+                  <br>
+                  <video controls class="player" data-poster="{{video["src"]}}.png" preload="none" width="500px">
                     <source src="{{video["src"]}}" type="video/mp4" />
                   </video>
                 </div>
