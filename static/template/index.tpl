@@ -14,7 +14,6 @@
 </head>
 
 <body>
-
 <div class="site-wrapper">
     <div class="site-wrapper-inner">
         <div class="cover-container">
@@ -32,6 +31,12 @@
                                 </button>
                             </span>
                         </div>
+                        <center>
+                        <fieldset id="group1">
+                            <input type="radio" value="AV" name="av" checked="checked"> Audio/Video &nbsp;
+                            <input type="radio" value="A" name="av"> Audio
+                        </fieldset>
+                        </center>
                     </form>
                 </div>
             </div>
@@ -40,8 +45,6 @@
         </div>
     </div>
 </div>
-
-
 <script src="youtube-dl/static/vendor/jquery.min.js"></script>
 <script src="youtube-dl/static/vendor/bootstrap.min.js"></script>
 <script src="youtube-dl/static/logical_js/logic.js"></script>

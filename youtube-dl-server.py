@@ -104,10 +104,13 @@ def q_size():
 @get('/youtube-dl/q', method='POST')
 def q_put():
     url = request.json.get("url")
-    resolution = request.json.get("resolution")
+    av  = request.json.get("av")
     if "" != url:
-        box = (url, None, resolution, "web")
-        dl_q.put(box)
+        req = {
+            "url" : url,
+            "av" : av
+        }
+        dl_q.put(req)
         send(f"Queued {url}. Total={dl_q.qsize()}")
         if (Thr.dl_thread.is_alive() == False):
             thr = Thr()
@@ -116,14 +119,6 @@ def q_put():
     else:
         return {"success": False, "msg": "Failed"}
 
-@get('/youtube-dl/rest', method='POST')
-def q_put_rest():
-    url = request.json.get("url")
-    resolution = request.json.get("resolution")
-    box = (url, "", resolution, "api")
-    dl_q.put(box)
-    return {"success": True, "msg": 'download has started', "Remaining downloading count": json.dumps(dl_q.qsize()) }
-
 def dl_worker():
     L("Worker starting")
     while not done:
@@ -131,29 +126,42 @@ def dl_worker():
         download(item)
         dl_q.task_done()
 
-def download(box):
+def download(req):
     today = date.today().isoformat()
-    url = box[0]
-    ws = box[1]
-    # result = subprocess.run()
+    url = req["url"]
+    av = req["av"]
+    generate_thumbnail = True
     send(f"Starting download of {url}")
-    cmd = [
-    "youtube-dl",
-        "--no-progress",
-        "--restrict-filenames",
-        "--format", "bestvideo[height<=760]+bestaudio",
-        # Often sensible video and audio streams are only available separately,
-        # so we need to merge the resulting file. Recoding a video to mp4
-        # with A+V can take a lot of time, so we opt for an open container format:
-        # Option A: Recode Video
-        # "--recode-video", "mp4",
-        # "--postprocessor-args", "-strict experimental", # allow use of mp4 encoder
-        # Option B: Use container format
-        # "--merge-output-format", "webm",
-        "-o", f"./downloads/{today} %(title)s via %(uploader)s.%(ext)s",
-        url,
-        # "--verbose",
-    ]
+    if av == "A": # audio only
+        cmd = [
+            "youtube-dl",
+            "--no-progress",
+            "--restrict-filenames",
+            "--format", "bestaudio",
+            "-o", f"./downloads/{today} %(title)s via %(uploader)s.%(ext)s",
+            "--extract-audio", "--audio-format", "mp3",
+            url,
+        ]
+        generate_thumbnail = False
+    else:
+        cmd = [
+            "youtube-dl",
+            "--no-progress",
+            "--restrict-filenames",
+            "--format", "bestvideo[height<=760]+bestaudio",
+            # Often sensible video and audio streams are only available separately,
+            # so we need to merge the resulting file. Recoding a video to mp4
+            # with A+V can take a lot of time, so we opt for an open container format:
+            # Option A: Recode Video
+            # "--recode-video", "mp4",
+            # "--postprocessor-args", "-strict experimental", # allow use of mp4 encoder
+            # Option B: Use container format
+            # "--merge-output-format", "webm",
+            "-o", f"./downloads/{today} %(title)s via %(uploader)s.%(ext)s",
+            url,
+            # "--verbose",
+        ]
+
     send("[youtube-dl] " + " ".join(cmd))
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     for line in proc.stdout:
@@ -171,16 +179,18 @@ def download(box):
         send("[Failed]" + str(e))
         return
 
-    p = pcall(cmd + ["--get-filename"])
-    fn = p.stdout.rstrip("\n")
-    # The filename is not actually accurate. The extension might be wrongly detected.
-    # Let's glob this:
-    fn = str(list(Path(".").glob(str(Path(fn).with_suffix("")) + "*"))[0])
-    p = pcall([
+    if generate_thumbnail:
+        p = pcall(cmd + ["--get-filename"])
+        fn = p.stdout.rstrip("\n")
+        # The filename is not actually accurate. The extension might be wrongly detected.
+        # Let's glob this:
+        fn = str(list(Path(".").glob(str(Path(fn).with_suffix("")) + "*"))[0])
+        p = pcall([
             "ffmpeg", "-y", "-i", fn,
             "-ss", "00:00:20.000", "-vframes", "1",
             fn + ".png"
-    ])
+        ])
+
     send("Done.")
 
 class Thr:
@@ -201,4 +211,3 @@ run(host='0.0.0.0', port=port, server=GeventWebSocketServer, reloader=True)
 done = True
 
 Thr.dl_thread.join()
- 

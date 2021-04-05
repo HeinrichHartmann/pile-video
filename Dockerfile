@@ -14,16 +14,8 @@ RUN mkdir -p /opt/ffmpeg && \
 RUN cd /opt/ffmpeg/ffmpeg-* && ln -s "${PWD}/ffmpeg" /usr/local/bin/
 
 RUN mkdir -p /usr/src/app
-WORKDIR /usr/src/app
-COPY requirements.txt /usr/src/app/
-RUN pip install -r requirements.txt
-
-COPY /run.sh /
-CMD [ "/bin/bash", "/run.sh" ]
-
 COPY . /usr/src/app
-RUN ln -s /usr/src/app/mnt/downloads /downloads
-RUN ln -s /usr/src/app/mnt/videos /videos
-VOLUME ["/downloads", "/videos"]
-
+WORKDIR /usr/src/app
+RUN pip install -r requirements.txt
+CMD [ "/bin/bash", "/usr/src/app/cmd.sh" ]
 EXPOSE 8080

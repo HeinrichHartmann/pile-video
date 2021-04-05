@@ -21,7 +21,7 @@ $(function () {
     $(document).on("click","#send",function(){
         var data={};
         data.url = $("#url").val();
-        data.resolution = $("#selResolution").val();
+        data.av = $('input[name=av]:checked').val();
         $.ajax({
             method : "POST"
             , url : "/youtube-dl/q"
@@ -41,7 +41,5 @@ $(function () {
         });
         $('#message').val('').focus();
         return false;
-
     });
-
 });
