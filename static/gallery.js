@@ -61,15 +61,15 @@ function queue_first() {
 }
 
 function queue_peek() {
-  const items = $("#queue .qitem");
-  if (items.length == 0) {
-    return null;
-  }
-  const i = items[0];
-  return {
-    src: i.getAttribute("video-src"),
-    name: i.getAttribute("video-name"),
-  };
+    const items = $("#queue .qitem");
+    if (items.length == 0) {
+        return null;
+    }
+    const i = items[0];
+    return {
+        src: i.getAttribute("video-src"),
+        name: i.getAttribute("video-name"),
+    };
 }
 
 function queue_remove() {
@@ -153,8 +153,8 @@ function do_play() {
     video.on("ended", player_black);
 }
 
-function gallery_show(pattern) {
-    const matches_max = 12;
+
+function gallery_show(pattern, matches_max) {
     var matches = 0;
     const fragments = pattern.split(/[ ]+/);
 
@@ -205,11 +205,15 @@ function gallery_show(pattern) {
 
 $(() => {
     // Initialize
-    gallery_show($('#search').val());
+    var matches_max = 2;
+    var pattern = $('#search').val();
+    gallery_show(pattern);
+
     // Listen to change events
     $('#search').keyup((event) => {
-        const pattern = event.currentTarget.value.replace(/ +/g, ' ').toLowerCase();
-        gallery_show(pattern);
+        pattern = event.currentTarget.value.replace(/ +/g, ' ').toLowerCase();
+        matches_max = 12;
+        gallery_show(pattern, matches_max);
     });
     $(document).on('keyup.player', (e) => {
         if (e.key === "Escape") {
@@ -220,4 +224,11 @@ $(() => {
         }
         return null;
     });
+    window.onscroll = function(ev) {
+        console.log(["Extend!", matches_max]);
+        if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight) {
+            matches_max += 2;
+            gallery_show(pattern, matches_max);
+        }
+    };
 });

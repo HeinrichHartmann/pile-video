@@ -2,7 +2,8 @@ PREFIX=docker.heinrichhartmann.net:5000
 IMAGE=${PREFIX}/pile-video
 PWD=$$(pwd)
 
-run:
+serve:
+	mkdir -p videos/pile cache tmp mp3
 	poetry run python main.py
 
 docker-image:

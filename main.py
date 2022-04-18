@@ -128,9 +128,10 @@ def serve_gallery():
     ]
 
     def key(o):
+        # path, count, _date
         p, c, m = o
-        if c > 0:
-            return f"z-{c:010d}"
+        # if c > 0:
+        #     return f"z-{c:010d}"
         if m:
             return "y" + p.name
         else:
@@ -168,7 +169,7 @@ def video_del():
     return {"status": "OK"}
 
 
-@app.route("/youtube-dl/q", methods=["POST"])
+@app.route("/download/q", methods=["POST"])
 def q_put():
     global dl_thread
     payload = flask.request.get_json()
@@ -203,16 +204,16 @@ def download(req):
     url = req["url"]
     av = req["av"]
     send(f"Starting download of {url}")
-    L.info("Download {url}")
+    L.info(f"Download {url}")
     if av == "A":  # audio only
         cmd = [
-            "youtube-dl",
+            "yt-dlp",
             "--no-progress",
             "--restrict-filenames",
             "--format",
             "bestaudio",
             "-o",
-            f"./downloads/{today} %(title)s via %(uploader)s.audio.%(ext)s",
+            f"./mp3/{today} %(title)s via %(uploader)s.audio.%(ext)s",
             "--extract-audio",
             "--audio-format",
             "mp3",
@@ -220,7 +221,7 @@ def download(req):
         ]
     else:
         cmd = [
-            "youtube-dl",
+            "yt-dlp",
             "--no-progress",
             "--restrict-filenames",
             "--format",
@@ -234,14 +235,14 @@ def download(req):
             # Option B: Use container format
             # "--merge-output-format", "webm",
             "-o",
-            f"./downloads/{today} %(title)s via %(uploader)s.%(ext)s",
+            f"./videos/pile/{today} %(title)s via %(uploader)s.%(ext)s",
             url,
             # "--verbose",
         ]
-    send("[youtube-dl] " + " ".join(cmd))
+    send("[pile-video] " + " ".join(cmd))
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     for line in proc.stdout:
-        send("[youtube-dl] " + line.decode("ASCII").rstrip("\n"))
+        send("[pile-video] " + line.decode("ASCII").rstrip("\n"))
     code = proc.wait()
     proc.stdout.close()
     try:
@@ -268,9 +269,7 @@ def dl_worker():
 
 def exec_interval():
     L.info("Starting update ...")
-    subprocess.run(
-        ["pip", "install", "-U", "youtube-dl"], capture_output=True, check=True
-    )
+    subprocess.run(["pip", "install", "-U", "yt-dlp"], capture_output=True, check=True)
     L.info("Update done")
 
 

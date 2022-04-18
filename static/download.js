@@ -23,7 +23,7 @@ $(() => {
         data.av = $('input[name=av]:checked').val();
         $.ajax({
             method: "POST",
-            url: "/youtube-dl/q",
+            url: "/download/q",
             data: JSON.stringify(data),
             dataType: "json",
             contentType: "application/json",
