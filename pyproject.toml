@@ -6,11 +6,9 @@ authors = ["Your Name <you@example.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.8"
-youtube_dl = "^2020.12.14"
 APScheduler = "^3.6.3"
 Flask-SocketIO = "^5.0.1"
 sqlitedict = "^1.7.0"
-gevent-websocket = "^0.10.1"
 yt-dlp = "^2022.4.8"
 
 [tool.poetry.dev-dependencies]

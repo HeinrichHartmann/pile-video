@@ -18,7 +18,14 @@ Features:
 
 ```
 make serve # serve local development version at port :8080
+
+make docker-image # create docker container
+
+make docker-serve # serve local development version at port :8090
+
+make docker-push # push image to (local) docker registry
 ```
+
 
 ## Folders
 
