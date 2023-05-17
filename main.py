@@ -70,7 +70,7 @@ class Counter:
 
     def commit(self):
         if self.dirty:
-            L.info("Commit view counts")
+            L.debug("Commit view counts")
             self.d["views"] = self.v
         self.dirty = False
 
@@ -78,7 +78,7 @@ class Counter:
         try:
             key = str(key)
             c = self.v.get(key, 0) + 1
-            L.info(f"C inc {key} -> {c}")
+            L.debug(f"C inc {key} -> {c}")
             self.v[key] = c
             self.dirty = True
             return c
@@ -91,7 +91,7 @@ class Counter:
             key = str(key)
             c = self.v.get(key, 0)
             if c > 0:
-                L.info(f"C get {key} -> {c}")
+                L.debug(f"C get {key} -> {c}")
             return c
         except Exception as e:
             L.error(e)
@@ -190,13 +190,13 @@ def q_put():
 # @app.route("/websocket")
 @socketio.on("connect")
 def test():
-    L.info("Socket connected")
+    L.debug("Socket connected")
     socketio.send(f"Downloads queued {dl_q.qsize()}\n")
 
 
 @socketio.on("message")
 def handle_message(msg):
-    L.info(f"Socket received: {msg}")
+    L.debug(f"Socket received: {msg}")
 
 
 def download(req):
