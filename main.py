@@ -16,10 +16,13 @@ import shutil
 
 from sweeper import sweep
 
-logging.basicConfig(format="%(asctime)s lvl=%(levelname)s pid=%(process)d %(message)s")
+logging.basicConfig(
+    format="%(asctime)s logger=%(name)s lvl=%(levelname)s pid=%(process)d %(message)s"
+)
 logging.getLogger("sweeper").setLevel(logging.INFO)
 
 DEBUG = os.environ.get("DEBUG", False)
+NO_SWEEP = os.environ.get("NO_SWEEP", False)
 
 L = logging.getLogger(__name__)
 L.setLevel(logging.INFO)
@@ -28,6 +31,8 @@ if DEBUG:
     L.setLevel(logging.DEBUG)
 if DEBUG:
     L.debug("DEBUG=true")
+
+L.debug(f"NO_SWEEP={NO_SWEEP}")
 
 dl_q = Queue()
 dl_done = False
@@ -285,6 +290,10 @@ class sched:
         self.sched = BackgroundScheduler()
         self.job_update = None
         self.job_sweep = None
+
+    def start(self):
+        if NO_SWEEP:
+            return
         self.sched.start()
         self.trigger_update()
         self.trigger_sweep()
@@ -323,6 +332,8 @@ class sched:
         )
 
     def shutdown(self):
+        if NO_SWEEP:
+            return
         self.sched.shutdown()
 
 
@@ -330,9 +341,12 @@ if __name__ == "__main__":
     dl_thread = Thread(target=dl_worker)
     dl_thread.start()
     mysched = sched()
+    mysched.start()
     app.jinja_env.auto_reload = True
     app.config["TEMPLATES_AUTO_RELOAD"] = True
-    socketio.run(app, host="0.0.0.0", port=8080)
+    # suppress werkzeug logging. For some reason we have to do this late in the process.
+    logging.getLogger("werkzeug").setLevel(logging.WARNING)
+    socketio.run(app, host="0.0.0.0", port=8083)
     # Cleanup
     mysched.shutdown()
     view_counter.commit()
