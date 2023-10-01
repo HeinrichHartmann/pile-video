@@ -6,12 +6,10 @@ from threading import Thread
 import os
 import flask
 import flask_socketio as flaskio
-import io
 import json
 import logging
 import re
 import subprocess
-import sys
 import shutil
 
 from sweeper import sweep
@@ -61,51 +59,6 @@ def serve_download():
     return flask.render_template("download.tpl")
 
 
-from sqlitedict import SqliteDict
-
-
-class Counter:
-    def __init__(self, store):
-        try:
-            self.d = SqliteDict(store, autocommit=True)
-            self.v = self.d.get("views", {})
-            self.dirty = False
-        except Exception as e:
-            L.error(e)
-
-    def commit(self):
-        if self.dirty:
-            L.debug("Commit view counts")
-            self.d["views"] = self.v
-        self.dirty = False
-
-    def inc(self, key):
-        try:
-            key = str(key)
-            c = self.v.get(key, 0) + 1
-            L.debug(f"C inc {key} -> {c}")
-            self.v[key] = c
-            self.dirty = True
-            return c
-        except Exception as e:
-            L.error(e)
-            return -1
-
-    def get(self, key):
-        try:
-            key = str(key)
-            c = self.v.get(key, 0)
-            if c > 0:
-                L.debug(f"C get {key} -> {c}")
-            return c
-        except Exception as e:
-            L.error(e)
-            return 0
-
-
-view_counter = Counter("./cache/viewcounts.sqlite")
-
-
 @app.route("/video/<path:filepath>")
 def serve_video(filepath):
     return flask.send_from_directory("./videos", filepath)
@@ -127,16 +80,13 @@ def serve_gallery():
     _re_date = re.compile("(\d\d\d\d\-\d\d-\d\d).*")
     VIDEO_EXT = {".mkv", ".webm", ".mp4"}
     paths = [
-        (p, view_counter.get(p.name), _re_date.match(p.name))
+        (p, _re_date.match(p.name))
         for p in Path("./videos").glob("**/*")
         if (p.suffix in VIDEO_EXT) and (not p.name.startswith("."))
     ]
 
     def key(o):
-        # path, count, _date
-        p, c, m = o
-        # if c > 0:
-        #     return f"z-{c:010d}"
+        p, m = o
         if m:
             return "y" + p.name
         else:
@@ -148,18 +98,10 @@ def serve_gallery():
             "name": o[0].name,
             "src": "/video/" + "/".join(o[0].parts[1:]),
             "poster": "/poster/" + o[0].parts[-1] + ".png",
-            "views": o[1],
         }
         for o in paths
     ]
     return flask.render_template("gallery.tpl", videos=videos)
-
-
-@app.route("/count", methods=["POST"])
-def video_count():
-    payload = flask.request.get_json()
-    c = view_counter.inc(payload["video"])
-    return {"status": "OK", "count": c}
 
 
 @app.route("/delete", methods=["POST"])
@@ -278,10 +220,6 @@ def exec_interval():
     L.info("Update done")
 
 
-def exec_counter_commit():
-    view_counter.commit()
-
-
 from apscheduler.schedulers.background import BackgroundScheduler
 
 
@@ -349,6 +287,5 @@ if __name__ == "__main__":
     socketio.run(app, host="0.0.0.0", port=8083)
     # Cleanup
     mysched.shutdown()
-    view_counter.commit()
     dl_done = True
     dl_thread.join()

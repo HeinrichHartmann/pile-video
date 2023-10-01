@@ -4,7 +4,8 @@
         <title>Pile Video Gallery</title>
         <link href="/static/vendor/tailwind.min.css" rel="stylesheet">
     </head>
-    <body>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+     <body>
         <div id="player" class="hidden block fixed h-full w-full bg-black">
         </div>
         <div id="gallery">
@@ -42,7 +43,7 @@
                         </span>
                         <input
                             type="search" name="q" id="search"
-                            class="w-full py-2 text-sm text-black bg-gray-100 rounded-md pl-10 focus:outline-none focus:bg-gray-100 focus:text-gray-900"
+                            class="w-full py-2 text-lg text-black bg-gray-100 rounded-md pl-10 focus:outline-none focus:bg-gray-100 focus:text-gray-900"
                             placeholder="Search..." autocomplete="off"
                             autofocus
                         >
@@ -52,13 +53,13 @@
 
             <!-- Gallery -->
             <main>
-               <div id="grid" class="p-4 grid gap-4 lg:grid-cols-4 md:grid-cols-2 sm:grid-cols-1" >
+               <div id="grid" class="p-4 grid gap-4 lg:grid-cols-4 md:grid-cols-3 sm:grid-cols-2" >
                     {% for video in videos %}
-                    <div class="vid flex flex-col justify-between p-4 bg-gray-200 rounded-lg mb-6 shadow-md"
+                    <div class="vid hidden flex-col justify-between p-4 bg-gray-200 rounded-lg mb-6 shadow-md"
+                         style="display: none;"
                          video-src="{{video["src"]}}"
                          video-poster="{{video["poster"]}}"
                          video-name="{{video["name"]}}"
-                         video-views="{{video["views"]}}"
                     >
                     </div>
                     {% endfor %}

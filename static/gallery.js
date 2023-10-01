@@ -3,10 +3,11 @@ function L(x) {
 };
 
 function Lajax(jqXHR, textStatus, errorThrown) {
-    console.log("jqXHR" + jqXHR);
-    console.log("jqXHR" + jqXHR.status);
-    console.log("textStatus" + textStatus);
-    console.log("errorThrown" + errorThrown);
+    console.log("jqXHR: " + jqXHR);
+    console.log("jqXHR: " + jqXHR.status);
+    console.log("textStatus: " + textStatus);
+    console.log("errorThrown: " + errorThrown);
+    console.log(arguments.callee.caller.toString());
     alert(textStatus + errorThrown);
 };
 
@@ -29,7 +30,7 @@ function do_delete() {
 }
 
 
-function do_queue() {
+function do_queue(event) {
     $("#queuebar").removeClass("hidden");
     const vid = $(event.target).closest(".vid");
     queue_vid(vid);
@@ -133,24 +134,27 @@ function play_all() {
         queue_remove();
         play_next();
     });
-
-    // Track views
-    $.ajax({
-        method: "POST",
-        url: "/count",
-        data: JSON.stringify({ video: name }),
-        dataType: "json",
-        contentType: "application/json",
-        error: Lajax,
-    });
 }
 
-function do_play() {
+function do_play(event) {
     const rec = $(event.target).closest(".vid");
     const src = rec.attr("video-src");
     player_show();
     const video = player_play(src);
     video.on("ended", player_black);
+}
+
+function do_click(event) {
+    switch (event.detail) {
+        case 1:
+            do_queue(event);
+            break;
+        case 2:
+            // double click
+            queue_remove();
+            do_play(event);
+            break;
+    }
 }
 
 
@@ -175,7 +179,6 @@ function gallery_show(pattern, matches_max) {
         var text = rec.getAttribute("video-name").replace(/\s+/g, ' ').toLowerCase();
         var name = rec.getAttribute("video-name").replace(/[_ ]+/g, ' ');
         var src = rec.getAttribute("video-src");
-        var views = rec.getAttribute("video-views");
         var poster = rec.getAttribute("video-poster");
         if (pmatch(text)) {
             matches++;
@@ -186,16 +189,14 @@ function gallery_show(pattern, matches_max) {
             rec.innerHTML = `
                <div>
                    <div class="preview">
-                     <img src="${poster}" class="w-full" onclick="do_queue()">
+                     <img src="${poster}" class="w-full" onclick="do_click(event)">
                      <div class="py-2 pt-4 text-gray-900">
-                         <p>${name} (${views})</p>
+                         <p>${name}</p>
                      </div>
                    </div>
                </div>
                <div>
-                   <button class="my-1 w-full border-2 rounded border-gray-500 hover:bg-green-200" onclick="do_play()">Play</button>
-                   <button class="my-1 w-full border-2 rounded border-gray-500 hover:bg-blue-200" onclick="do_queue()">Queue</button>
-                   <button class="my-1 w-full border-2 rounded border-gray-500 hover:bg-red-200" onclick="do_delete()">Delete</button>
+                   <button class="my-1 w-full border-2 rounded border-gray-500 hover:bg-red-200" onclick="do_delete(event)">Delete</button>
                </div>
             `;
         }
@@ -205,9 +206,9 @@ function gallery_show(pattern, matches_max) {
 
 $(() => {
     // Initialize
-    var matches_max = 2;
+    var matches_max = 12;
     var pattern = $('#search').val();
-    gallery_show(pattern);
+    gallery_show(pattern, matches_max);
 
     // Listen to change events
     $('#search').keyup((event) => {
@@ -226,8 +227,8 @@ $(() => {
     });
     window.onscroll = function(ev) {
         console.log(["Extend!", matches_max]);
-        if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight) {
-            matches_max += 2;
+        if ((window.innerHeight + window.scrollY) >= 0.95 * document.body.offsetHeight) {
+            matches_max += 10;
             gallery_show(pattern, matches_max);
         }
     };
