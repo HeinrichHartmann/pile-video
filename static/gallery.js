@@ -11,6 +11,8 @@ function Lajax(jqXHR, textStatus, errorThrown) {
     alert(textStatus + errorThrown);
 };
 
+function isMobile() { return ('ontouchstart' in document.documentElement); }
+
 function do_delete() {
     const rec = $(event.target).closest(".vid");
     const src = rec.attr("video-src");
@@ -232,4 +234,8 @@ $(() => {
             gallery_show(pattern, matches_max);
         }
     };
+
+    if (!isMobile()) {
+        $('#search').focus();
+    }
 });

@@ -45,7 +45,6 @@
                             type="search" name="q" id="search"
                             class="w-full py-2 text-lg text-black bg-gray-100 rounded-md pl-10 focus:outline-none focus:bg-gray-100 focus:text-gray-900"
                             placeholder="Search..." autocomplete="off"
-                            autofocus
                         >
                     </div>
                 </div>

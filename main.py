@@ -11,6 +11,7 @@ import logging
 import re
 import subprocess
 import shutil
+from apscheduler.schedulers.background import BackgroundScheduler
 
 from sweeper import sweep
 
@@ -35,20 +36,21 @@ L.debug(f"NO_SWEEP={NO_SWEEP}")
 dl_q = Queue()
 dl_done = False
 dl_thread = None
-app = flask.Flask(__name__, static_folder="./static", template_folder="./template")
 
-if DEBUG:
-    socketio = flaskio.SocketIO(
-        app, logger=True, engineio_logger=True, cors_allowed_origins="*"
-    )
-else:
-    socketio = flaskio.SocketIO(app, cors_allowed_origins="*")
 
 mysched = None
 PVIDEOS = Path("./videos")
 
 
-def send(msg):
+#
+# Flask App
+#
+app = flask.Flask(__name__, static_folder="./static", template_folder="./template")
+
+socketio = flaskio.SocketIO(app, cors_allowed_origins="*")
+
+
+def websocket_send(msg):
     "Sends message to all known web-sockets"
     L.debug(f"socket > {msg}")
     socketio.emit("message", msg, broadcast=True)
@@ -118,6 +120,7 @@ def video_del():
 
 @app.route("/download/q", methods=["POST"])
 def q_put():
+    "Enqueue a video download request"
     global dl_thread
     payload = flask.request.get_json()
     url = payload.get("url")
@@ -125,7 +128,7 @@ def q_put():
     if "" != url:
         req = {"url": url, "av": av}
         dl_q.put(req)
-        send(f"Queued {url}. Total={dl_q.qsize()}")
+        websocket_send(f"Queued {url}. Total={dl_q.qsize()}")
         if dl_thread and not dl_thread.is_alive():
             dl_thread = Thread(target=dl_worker)
             dl_thread.start()
@@ -134,7 +137,6 @@ def q_put():
         return flask.jsonify({"success": False, "msg": "Failed"})
 
 
-# @app.route("/websocket")
 @socketio.on("connect")
 def test():
     L.debug("Socket connected")
@@ -150,7 +152,7 @@ def download(req):
     today = date.today().isoformat()
     url = req["url"]
     av = req["av"]
-    send(f"Starting download of {url}")
+    websocket_send(f"Starting download of {url}")
     L.info(f"Download {url}")
     if av == "A":  # audio only
         cmd = [
@@ -186,24 +188,26 @@ def download(req):
             url,
             # "--verbose",
         ]
-    send("[pile-video] " + " ".join(cmd))
+    websocket_send("[pile-video] " + " ".join(cmd))
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     for line in proc.stdout:
-        send("[pile-video] " + line.decode("ASCII").rstrip("\n"))
+        websocket_send("[pile-video] " + line.decode("ASCII").rstrip("\n"))
     code = proc.wait()
     proc.stdout.close()
     try:
         if code == 0:
-            send("[Finished] " + url + ". Remaining: " + json.dumps(dl_q.qsize()))
+            websocket_send(
+                "[Finished] " + url + ". Remaining: " + json.dumps(dl_q.qsize())
+            )
         else:
-            send("[Failed] " + url)
+            websocket_send("[Failed] " + url)
             return
     except error as e:
         L.error(e)
-        send("[Failed]" + str(e))
+        websocket_send("[Failed]" + str(e))
         return
     mysched.trigger_sweep()
-    send("Done.")
+    websocket_send("Done.")
 
 
 def dl_worker():
@@ -218,9 +222,6 @@ def exec_interval():
     L.info("Starting update ...")
     subprocess.run(["pip", "install", "-U", "yt-dlp"], capture_output=True, check=True)
     L.info("Update done")
-
-
-from apscheduler.schedulers.background import BackgroundScheduler
 
 
 class sched:
