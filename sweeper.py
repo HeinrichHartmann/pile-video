@@ -3,15 +3,17 @@
 #
 from pathlib import Path
 import subprocess as sp
+import os
 import tempfile
 import shutil
 
-PVIDEOS = Path("./videos")
-PMP3 = Path("./mp3")
-PCACHE = Path("./cache")
-PTMP = Path("./tmp")
-CACHE_NAMES = set(p.name for p in PCACHE.glob("*"))
+PVIDEOS = Path(os.environ.get("VIDEOS", "./videos"))
+PPILE = Path(os.environ.get("PILE", "./videos/pile"))
+PTMP = Path(os.environ.get("TMP", "./tmp"))
+PMP3 = Path(os.environ.get("MP3", "./mp3"))
+PCACHE = Path(os.environ.get("CACHE", "./cache"))
 
+CACHE_NAMES = set(p.name for p in PCACHE.glob("*"))
 INPUT_EXT = {".mkv", ".webm", ".mp4"}
 VIDEO_RECODE_EXT = {".mkv", ".webm"}
 AUDIO_EXTRACT_EXT = {".mp4"}
@@ -20,7 +22,6 @@ PREVIEW_EXT = {".mp4"}
 import logging
 
 L = logging.getLogger(__name__)
-
 
 def pcall(cmd):
     L.debug(f"Running {cmd}")
@@ -140,7 +141,6 @@ def recode(path_src):
     assert path_dst.exists()
     path_src.unlink()
     generate_preview(path_dst)
-
 
 def sweep():
     L.info("Sweep start")

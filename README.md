@@ -32,6 +32,5 @@ make docker-push # push image to (local) docker registry
 - `./videos` -- video gallery
 - `./videos/pile` -- downloads go here
 - `./mp3` -- extracted audio goes here
-
 - `./cache` -- previews go here
 - `./tmp` -- used during download and recoding

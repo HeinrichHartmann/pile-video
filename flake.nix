@@ -1,16 +1,23 @@
 {
-  inputs = { nixpkgs.url = "github:nixos/nixpkgs"; };
+  description = "A basic flake with a shell";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+  inputs.flake-utils.url = "github:numtide/flake-utils";
 
-  outputs = { self, nixpkgs }:
-    let pkgs = nixpkgs.legacyPackages.x86_64-linux;
-    in {
-      packages.x86_64-linux.hello = pkgs.hello;
-      devShell.x86_64-linux = pkgs.mkShell { buildInputs = [
-        pkgs.gnumake
-        pkgs.git
-        pkgs.coreutils
-        pkgs.poetry
-        pkgs.jq
-      ]; };
-    };
+  outputs =
+    { nixpkgs, flake-utils, ... }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+      in
+      {
+        devShells.default = pkgs.mkShell { packages = [
+          pkgs.gnumake
+          pkgs.git
+          pkgs.coreutils
+          pkgs.poetry
+          pkgs.jq
+        ]; };
+      }
+    );
 }

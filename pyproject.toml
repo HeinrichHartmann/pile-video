@@ -1,8 +1,8 @@
 [tool.poetry]
-name = "youtube-dl-nas"
-version = "0.1.0"
+name = "pile-video"
+version = "0.5.0"
+authors = ["Heinrich Hartmann <heinrich@heinrichhartmann.com>"]
 description = ""
-authors = ["Your Name <you@example.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.8"
@@ -10,6 +10,7 @@ APScheduler = "^3.6.3"
 Flask-SocketIO = "^5.0.1"
 sqlitedict = "^1.7.0"
 yt-dlp = "^2022.4.8"
+flask = "^3.0.3"
 
 [tool.poetry.dev-dependencies]
 

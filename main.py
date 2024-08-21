@@ -11,6 +11,7 @@ import logging
 import re
 import subprocess
 import shutil
+import click
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from sweeper import sweep
@@ -28,19 +29,29 @@ L.setLevel(logging.INFO)
 
 if DEBUG:
     L.setLevel(logging.DEBUG)
-if DEBUG:
     L.debug("DEBUG=true")
 
 L.debug(f"NO_SWEEP={NO_SWEEP}")
 
+def validate(env_var, default_path):
+    path = Path(os.environ.get(env_var, default_path))
+    if DEBUG:
+        L.debug(f"{env_var}={path}")
+    if not path.is_dir():
+        L.error(f"{env_var} does not exist: {path}")
+    return path
+
+PVIDEOS= validate("VIDEOS", "./videos")
+PPILE= validate("PILE", "./videos/pile")
+PTMP= validate("TMP", "./tmp")
+PMP3= validate("MP3", "./mp3")
+PCACHE= validate("CACHE", "./cache")
+
+# Forward declarations
 dl_q = Queue()
 dl_done = False
 dl_thread = None
-
-
 mysched = None
-PVIDEOS = Path("./videos")
-
 
 #
 # Flask App
@@ -48,7 +59,6 @@ PVIDEOS = Path("./videos")
 app = flask.Flask(__name__, static_folder="./static", template_folder="./template")
 
 socketio = flaskio.SocketIO(app, cors_allowed_origins="*")
-
 
 def websocket_send(msg):
     "Sends message to all known web-sockets"
@@ -63,12 +73,13 @@ def serve_download():
 
 @app.route("/video/<path:filepath>")
 def serve_video(filepath):
-    return flask.send_from_directory("./videos", filepath)
+    base_path = PVIDEOS.resolve
+    return flask.send_from_directory(PVIDEOS , filepath)
 
 
 @app.route("/poster/<path:filepath>")
 def serve_poster(filepath):
-    return flask.send_from_directory("./cache", filepath)
+    return flask.send_from_directory(PCACHE, filepath)
 
 
 @app.route("/static/<path:filepath>")
@@ -83,9 +94,10 @@ def serve_gallery():
     VIDEO_EXT = {".mkv", ".webm", ".mp4"}
     paths = [
         (p, _re_date.match(p.name))
-        for p in Path("./videos").glob("**/*")
+        for p in PVIDEOS.glob("**/*")
         if (p.suffix in VIDEO_EXT) and (not p.name.startswith("."))
     ]
+    L.debug(f"Found {len(paths)} videos.")
 
     def key(o):
         p, m = o
@@ -162,7 +174,7 @@ def download(req):
             "--format",
             "bestaudio",
             "-o",
-            f"./mp3/{today} %(title)s via %(uploader)s.audio.%(ext)s",
+            f"{PMP3}/{today} %(title)s via %(uploader)s.audio.%(ext)s",
             "--extract-audio",
             "--audio-format",
             "mp3",
@@ -184,7 +196,7 @@ def download(req):
             # Option B: Use container format
             # "--merge-output-format", "webm",
             "-o",
-            f"./videos/pile/{today} %(title)s via %(uploader)s.%(ext)s",
+            f"{PPILE}/{today} %(title)s via %(uploader)s.%(ext)s",
             url,
             # "--verbose",
         ]
@@ -231,18 +243,9 @@ class sched:
         self.job_sweep = None
 
     def start(self):
-        if NO_SWEEP:
-            return
         self.sched.start()
         self.trigger_update()
         self.trigger_sweep()
-        self.sched.add_job(
-            exec_counter_commit,
-            "interval",
-            seconds=10,
-            max_instances=1,
-            next_run_time=datetime.now(),
-        )
 
     def trigger_update(self):
         L.info("trigger update")
@@ -275,18 +278,28 @@ class sched:
             return
         self.sched.shutdown()
 
-
-if __name__ == "__main__":
+@click.command()
+@click.option("-p", "--port", default=8083, help="Port to listen on", envvar="PORT")
+def main(port):
     dl_thread = Thread(target=dl_worker)
     dl_thread.start()
     mysched = sched()
-    mysched.start()
+    if NO_SWEEP:
+        print("No sweeping no video gallery")
+    else:
+        mysched.start()
+
     app.jinja_env.auto_reload = True
     app.config["TEMPLATES_AUTO_RELOAD"] = True
     # suppress werkzeug logging. For some reason we have to do this late in the process.
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
-    socketio.run(app, host="0.0.0.0", port=8083)
+    socketio.run(app, host="0.0.0.0", port=port, debug=DEBUG) # blocks
+
+    # CTRL-C will get us here.
     # Cleanup
     mysched.shutdown()
     dl_done = True
     dl_thread.join()
+
+if __name__ == "__main__":
+    main()
