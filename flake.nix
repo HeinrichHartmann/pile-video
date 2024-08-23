@@ -11,12 +11,13 @@
         pkgs = nixpkgs.legacyPackages.${system};
       in
       {
-        devShells.default = pkgs.mkShell { packages = [
-          pkgs.gnumake
-          pkgs.git
-          pkgs.coreutils
-          pkgs.poetry
-          pkgs.jq
+        devShells.default = with pkgs; mkShell { packages = [
+          gnumake
+          git
+          coreutils
+          poetry
+          jq
+          ffmpeg
         ]; };
       }
     );

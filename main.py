@@ -13,6 +13,8 @@ import subprocess
 import shutil
 import click
 from apscheduler.schedulers.background import BackgroundScheduler
+from concurrent.futures import ThreadPoolExecutor
+import subprocess as sp
 
 from sweeper import sweep
 
@@ -46,12 +48,166 @@ PPILE= validate("PILE", "./videos/pile")
 PTMP= validate("TMP", "./tmp")
 PMP3= validate("MP3", "./mp3")
 PCACHE= validate("CACHE", "./cache")
+PDB = PCACHE / "pile.db"
 
 # Forward declarations
 dl_q = Queue()
 dl_done = False
 dl_thread = None
 mysched = None
+
+#
+# Helper
+#
+
+def pcall(cmd):
+    L.debug(f"Running {cmd}")
+    p = sp.run(cmd, capture_output=True, check=False)
+    if p.returncode != 0:
+        L.error(f"Failed running {cmd}")
+        L.error(p.stderr)
+        L.error(p.stdout)
+        return False
+    return p
+
+
+#
+# File Actions
+#
+def generate_poster(path_src, path_dst):
+    pcall([ "ffmpeg", "-n", "-v", "debug", "-i", str(path_src), "-ss", "00:00:20.000", "-vframes", "1", str(path_dst) ])
+    if path_dst.exists():
+        return True
+    L.error(f"Second try for {path_src}. Using first frame.")
+    pcall([ "ffmpeg", "-n", "-v", "fatal", "-i", str(path_src), "-ss", "00:00:00.000", "-vframes", "1", str(path_dst) ])
+    if path_dst.exists():
+        return True
+    return False
+
+def generate_duration(path):
+    p = pcall([ "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path) ])
+    if p:
+        return float(p.stdout)
+    return None
+
+#
+# Thread Pool Management
+#
+executor = ThreadPoolExecutor(max_workers=4)
+def exec_submit(fn, *args, **kwargs):
+    future = executor.submit(fn, *args, **kwargs)
+    def done_callback(future):
+        if future.exception():
+            L.error(f"Error in {fn.__name__}: {future.exception()}")
+        else:
+            L.debug(f"Done {fn.__name__}")
+    future.add_done_callback(done_callback)
+
+#
+# Meta Database
+#
+import sqlite3
+import threading
+def db_connection():
+    thread_local = threading.local()
+    if not hasattr(thread_local, 'sqlite_db'):
+        thread_local.sqlite_db = sqlite3.connect(PDB)
+    return thread_local.sqlite_db
+
+def db_init():
+    db = db_connection()
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS video (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            path TEXT UNIQUE,
+            title TEXT,
+            duration_sec INTEGER,
+            video_url TEXT,
+            poster_url TEXT
+        );
+    """)
+    db.commit()
+
+def db_scan_videos(root: Path):
+    _re_date = re.compile("(\d\d\d\d\-\d\d-\d\d).*")
+    VIDEO_EXT = {".mkv", ".webm", ".mp4"}
+    cnt = 0
+    db = db_connection()
+    for path in root.glob("**/*"):
+        date = _re_date.match(path.name)
+        title = path.name
+        video_url = "/video/" + "/".join(path.parts[1:])
+        if (path.suffix in VIDEO_EXT) and (not path.name.startswith(".")):
+            db.execute("INSERT OR IGNORE INTO video (path, video_url, title) VALUES (?, ?, ?)", (str(path), video_url, title))
+            cnt += 1
+    db.commit()
+    L.info(f"Found {cnt} videos.")
+
+def set_duration(path: Path):
+    duration = generate_duration(path)
+    if duration:
+        db = db_connection()
+        db.execute("UPDATE video SET duration_sec = ? WHERE path = ?", (duration, str(path)))
+        db.commit()
+        L.debug(f"Set duration for {path} to {duration} seconds.")
+        return True
+    else:
+        L.error(f"Failed to get duration for {path}")
+    return False
+
+def db_scan_duration():
+    db = db_connection()
+    res = db.execute("SELECT path FROM video WHERE duration_sec IS NULL")
+    cnt = 0
+    for row in res:
+        path = Path(row[0])
+        exec_submit(set_duration, path)
+        cnt += 1
+    L.info(f"Queued {cnt} duration computations.")
+
+def set_poster(path: Path):
+    L.info(f"Generate poster {path}.")
+    poster_path = PCACHE / (path.name + ".png")
+    if generate_poster(path, poster_path):
+        poster_url = "/poster/" + path.name + ".png"
+        db = db_connection()
+        db.execute("UPDATE video SET poster_url = ? WHERE path = ?", (poster_url, str(path)))
+        db.commit()
+        L.debug(f"Set poster for {path} to {poster_url}.")
+    else:
+        L.error(f"Failed to generate poster for {path}.")
+
+def db_scan_poster(root: Path):
+    db = db_connection()
+    res = db.execute("SELECT path FROM video WHERE poster_url IS NULL")
+    cnt_found = 0
+    cnt_queued = 0
+    for row in res:
+        path = Path(row[0])
+        poster_path = root / (path.name + ".png")
+        if poster_path.exists():
+            cnt_found += 1
+            poster_url = "/poster/" + path.name + ".png"
+            db.execute("UPDATE video SET poster_url = ? WHERE path = ?", (poster_url, str(path)))
+        else:
+            cnt_queued += 1
+            exec_submit(set_poster, path)
+    db.commit()
+    L.info(f"Found {cnt_found} posters. Queued {cnt_queued} poster generations.")
+
+def db_clear_posters():
+    db = db_connection()
+    db.execute("UPDATE video SET poster_url = NULL")
+    db.commit()
+
+db_init()
+db_scan_videos(PVIDEOS)
+db_scan_duration()
+db_clear_posters()
+db_scan_poster(PCACHE)
+executor.shutdown()
+
+assert False;
 
 #
 # Flask App
@@ -281,6 +437,8 @@ class sched:
 @click.command()
 @click.option("-p", "--port", default=8083, help="Port to listen on", envvar="PORT")
 def main(port):
+    db_init()
+
     dl_thread = Thread(target=dl_worker)
     dl_thread.start()
     mysched = sched()
