@@ -13,7 +13,6 @@ import subprocess
 import shutil
 import click
 import tempfile
-from apscheduler.schedulers.background import BackgroundScheduler
 from concurrent.futures import ThreadPoolExecutor
 import subprocess as sp
 
@@ -36,23 +35,30 @@ if DEBUG:
 
 L.debug(f"NO_SWEEP={NO_SWEEP}")
 
-def validate(env_var, default_path):
+def validate(env_var, default_path, create=False):
     path = Path(os.environ.get(env_var, default_path))
     if DEBUG:
         L.debug(f"{env_var}={path}")
     if not path.is_dir():
-        L.error(f"{env_var} does not exist: {path}")
+        if create:
+            # mkdir
+            path.mkdir(parents=True, exist_ok=True)
+            L.info(f"Created {env_var}: {path}")
+        else:
+            L.error(f"{env_var} does not exist: {path}")
     return path
 
 PVIDEOS= validate("VIDEOS", "./videos")
 PPILE= validate("PILE", "./videos/pile")
+PTRASH = validate("PTRASH", PVIDEOS / "trash/", create=True)
 PMP3= validate("MP3", "./mp3")
 PCACHE= validate("CACHE", "./cache")
 PTMP= validate("TMP", "./tmp")
 PDB = PCACHE / "pile.db"
 
+
 #
-# Helper
+# Thread Pool Management
 #
 
 def pcall(cmd):
@@ -64,6 +70,17 @@ def pcall(cmd):
         L.error(p.stdout)
         return False
     return p
+
+executor = ThreadPoolExecutor(max_workers=4)
+def exec_submit(fn, *args, **kwargs):
+    future = executor.submit(fn, *args, **kwargs)
+    def done_callback(future):
+        if future.exception():
+            L.error(f"Error in {fn.__name__}: {future.exception()}")
+        else:
+            L.debug(f"Done {fn.__name__}")
+    future.add_done_callback(done_callback)
+    return future
 
 
 #
@@ -131,20 +148,8 @@ def generate_download(url, output_dir, log):
         for line in proc.stderr:
             log("[pile-video] " + line.decode("ASCII").rstrip("\n"))
 
-
-#
-# Thread Pool Management
-#
-executor = ThreadPoolExecutor(max_workers=4)
-def exec_submit(fn, *args, **kwargs):
-    future = executor.submit(fn, *args, **kwargs)
-    def done_callback(future):
-        if future.exception():
-            L.error(f"Error in {fn.__name__}: {future.exception()}")
-        else:
-            L.debug(f"Done {fn.__name__}")
-    future.add_done_callback(done_callback)
-    return future
+def generate_update_ytdl():
+    pcall(["pip", "install", "-U", "yt-dlp"])
 
 #
 # Meta Database
@@ -362,13 +367,11 @@ def serve_gallery():
 def video_del():
     payload = flask.request.get_json()
     src = Path(payload["src"]).relative_to("/video/")
-    print(src)
-    print(PVIDEOS / src)
+    dst = PTRASH / (src.name + ".del")
     assert (PVIDEOS / src).exists()
-    shutil.move(PVIDEOS / src, PVIDEOS / (str(src) + ".del"))
-    L.info(f"Removed from gallery: {src}")
+    shutil.move(PVIDEOS / src, dst)
+    L.info(f"Moved to trash: {src} -> {dst}")
     return {"status": "OK"}
-
 
 @app.route("/download/q", methods=["POST"])
 def q_put():
@@ -383,66 +386,18 @@ def test():
     L.debug("Socket connected")
     socketio.send(f"Welcome!\n")
 
-
 @socketio.on("message")
 def handle_message(msg):
     L.debug(f"Socket received: {msg}")
-
-def exec_interval():
-    L.info("Starting update ...")
-    subprocess.run(["pip", "install", "-U", "yt-dlp"], capture_output=True, check=True)
-    L.info("Update done")
-
-class sched:
-    def __init__(self):
-        self.sched = BackgroundScheduler()
-        self.job_update = None
-        self.job_sweep = None
-
-    def start(self):
-        self.sched.start()
-        self.trigger_update()
-        self.trigger_sweep()
-
-    def trigger_update(self):
-        L.info("trigger update")
-        job = self.job_update
-        if job:
-            job.remove()
-        self.job_update = self.sched.add_job(
-            exec_interval,
-            "interval",
-            seconds=60 * 60,
-            max_instances=1,
-            next_run_time=datetime.now(),
-        )
-
-    def trigger_sweep(self):
-        L.info("trigger sweep")
-        job = self.job_sweep
-        if job:
-            job.remove()
-        self.job_sweep = self.sched.add_job(
-            sweep,
-            "interval",
-            seconds=60 * 60,
-            max_instances=1,
-            next_run_time=datetime.now(),
-        )
-
-    def shutdown(self):
-        if NO_SWEEP:
-            return
-        self.sched.shutdown()
 
 @click.command()
 @click.option("-p", "--port", default=8083, help="Port to listen on", envvar="PORT")
 def main(port):
     db_init()
 
-    # Re-scan poster files + audio files on startup
-    # db_clear_posters()
-    # db_clear_audio()
+    # Re-scan for poster & audio files on startup
+    db_clear_posters()
+    db_clear_audio()
 
     db_scan_videos(PVIDEOS)
     db_scan_duration()
@@ -450,21 +405,14 @@ def main(port):
     db_scan_audio(PMP3)
     db_scan_recode(PVIDEOS)
 
-    mysched = sched()
-    if NO_SWEEP:
-        print("No sweeping no video gallery")
-    else:
-        mysched.start()
-
     app.jinja_env.auto_reload = True
     app.config["TEMPLATES_AUTO_RELOAD"] = True
     # suppress werkzeug logging. For some reason we have to do this late in the process.
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
-    socketio.run(app, host="0.0.0.0", port=port, debug=DEBUG) # blocks
+    socketio.run(app, host="0.0.0.0", port=port, debug=DEBUG) # BLOCK
 
     # CTRL-C will get us here.
     # Cleanup
-    mysched.shutdown()
     executor.shutdown()
 
 if __name__ == "__main__":

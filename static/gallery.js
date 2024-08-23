@@ -28,6 +28,7 @@ function do_delete() {
             contentType: "application/json",
             error: Lajax,
         });
+        rec.remove();
     }
 }
 
