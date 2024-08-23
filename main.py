@@ -12,6 +12,7 @@ import re
 import subprocess
 import shutil
 import click
+import tempfile
 from apscheduler.schedulers.background import BackgroundScheduler
 from concurrent.futures import ThreadPoolExecutor
 import subprocess as sp
@@ -45,16 +46,10 @@ def validate(env_var, default_path):
 
 PVIDEOS= validate("VIDEOS", "./videos")
 PPILE= validate("PILE", "./videos/pile")
-PTMP= validate("TMP", "./tmp")
 PMP3= validate("MP3", "./mp3")
 PCACHE= validate("CACHE", "./cache")
+PTMP= validate("TMP", "./tmp")
 PDB = PCACHE / "pile.db"
-
-# Forward declarations
-dl_q = Queue()
-dl_done = False
-dl_thread = None
-mysched = None
 
 #
 # Helper
@@ -90,6 +85,53 @@ def generate_duration(path):
         return float(p.stdout)
     return None
 
+def generate_audio(path_src, path_dst):
+    L.debug(f"Extract audio {path_src}")
+    with tempfile.TemporaryDirectory(dir=PTMP) as tmpdir:
+        path_tmp: Path = Path(tmpdir) / "tmp.mp3"
+        pcall([ "ffmpeg", "-i", str(path_src), str(path_tmp), ])
+        assert path_tmp.exists()
+        shutil.move(path_tmp, path_dst)
+    return path_dst.exists()
+
+def generate_recode(path_src, path_dst):
+    L.info(f"Recode {path_src} -> {path_dst}")
+    with tempfile.TemporaryDirectory(dir=PTMP) as tmpdir:
+        path_tmp: Path = Path(tmpdir) / "tmp.mp4"
+        pcall([ "ffmpeg", "-v", "fatal", "-n", "-i", str(path_src), "-c:a", "aac", str(path_tmp), ])
+        assert path_tmp.exists()
+        shutil.move(path_tmp, path_dst)
+    assert path_dst.exists()
+    path_src.unlink() # rm source
+
+def generate_download(url, output_dir, log):
+    today = date.today().isoformat()
+    log(f"Starting download of {url}")
+    L.info(f"Download {url}")
+    cmd = [
+        "yt-dlp",
+        "--no-progress",
+        "--restrict-filenames",
+        "--format",
+        "bestvideo[height<=760]+bestaudio",
+        "-o",
+        f"{output_dir}/{today} %(title)s via %(uploader)s.%(ext)s",
+        url,
+    ]
+    log("[pile-video] " + " ".join(cmd))
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    for line in proc.stdout:
+        log("[pile-video] " + line.decode("ASCII").rstrip("\n"))
+    code = proc.wait()
+    proc.stdout.close()
+    if code == 0:
+        log(f"[Finished] Downloading {url}.")
+    else:
+        log(f"[Failed] Downloading {url} with code {code}.")
+        for line in proc.stderr:
+            log("[pile-video] " + line.decode("ASCII").rstrip("\n"))
+
+
 #
 # Thread Pool Management
 #
@@ -102,6 +144,7 @@ def exec_submit(fn, *args, **kwargs):
         else:
             L.debug(f"Done {fn.__name__}")
     future.add_done_callback(done_callback)
+    return future
 
 #
 # Meta Database
@@ -123,14 +166,15 @@ def db_init():
             title TEXT,
             duration_sec INTEGER,
             video_url TEXT,
-            poster_url TEXT
+            poster_url TEXT,
+            audio_path TEXT
         );
     """)
     db.commit()
 
 def db_scan_videos(root: Path):
     _re_date = re.compile("(\d\d\d\d\-\d\d-\d\d).*")
-    VIDEO_EXT = {".mkv", ".webm", ".mp4"}
+    VIDEO_EXT = {".mp4"}
     cnt = 0
     db = db_connection()
     for path in root.glob("**/*"):
@@ -166,7 +210,7 @@ def db_scan_duration():
     L.info(f"Queued {cnt} duration computations.")
 
 def set_poster(path: Path):
-    L.info(f"Generate poster {path}.")
+    L.debug(f"Generate poster {path}.")
     poster_path = PCACHE / (path.name + ".png")
     if generate_poster(path, poster_path):
         poster_url = "/poster/" + path.name + ".png"
@@ -200,15 +244,50 @@ def db_clear_posters():
     db.execute("UPDATE video SET poster_url = NULL")
     db.commit()
 
-db_init()
-db_scan_videos(PVIDEOS)
-db_scan_duration()
-db_clear_posters()
-db_scan_poster(PCACHE)
-executor.shutdown()
+def db_clear_audio():
+    db = db_connection()
+    db.execute("UPDATE video SET audio_path = NULL")
+    db.commit()
 
-assert False;
+def db_set_audio(path: Path, audio_path: Path):
+    db = db_connection()
+    db.execute("UPDATE video SET audio_path = ? WHERE path = ?", (str(audio_path), str(path)))
+    db.commit()
 
+def db_scan_audio(root):
+    AUDIO_EXTRACT_EXT = {".mp4"}
+    db = db_connection()
+    res = db.execute("SELECT path FROM video WHERE audio_path IS NULL")
+    cnt_found = 0
+    cnt_queued = 0
+    for row in res:
+        path = Path(row[0])
+        audio_path = root / (path.name + ".mp3")
+        if audio_path.exists():
+            db.execute("UPDATE video SET audio_path = ? WHERE path = ?", (str(audio_path), str(path)))
+            cnt_found += 1
+        elif path.suffix in AUDIO_EXTRACT_EXT:
+            cnt_queued += 1
+            exec_submit(generate_audio, path, audio_path)
+        else:
+            L.debug(f"Audio extraction skipped for {path}")
+    db.commit()
+    L.info(f"Found {cnt_found} audio files. Queued {cnt_queued} audio extractions.")
+
+def db_scan_recode(root: Path):
+    VIDEO_RECODE_EXT = {".webm", ".mkv"}
+    cnt = 0
+    for path in root.glob("**/*"):
+        if not path.suffix in VIDEO_RECODE_EXT:
+            continue
+        recode_path = root / (path.name + ".mp4")
+        if recode_path.exists():
+            continue
+        exec_submit(generate_recode, path, recode_path)
+        cnt += 1
+    L.info(f"Queued {cnt} videos for recoding.")
+
+    
 #
 # Flask App
 #
@@ -263,11 +342,16 @@ def serve_gallery():
             return "x"
 
     paths = sorted(paths, reverse=True, key=key)
+    def path_to_video(path):
+        return "/video/" + "/".join(path.relative_to(PVIDEOS).parts)
+    def path_to_poster(path):
+        return "/poster/" + path.name + ".png"
+
     videos = [
         {
             "name": o[0].name,
-            "src": "/video/" + "/".join(o[0].parts[1:]),
-            "poster": "/poster/" + o[0].parts[-1] + ".png",
+            "src": path_to_video(o[0]),
+            "poster": path_to_poster(o[0])
         }
         for o in paths
     ]
@@ -288,109 +372,26 @@ def video_del():
 
 @app.route("/download/q", methods=["POST"])
 def q_put():
-    "Enqueue a video download request"
-    global dl_thread
     payload = flask.request.get_json()
     url = payload.get("url")
-    av = payload.get("av")
-    if "" != url:
-        req = {"url": url, "av": av}
-        dl_q.put(req)
-        websocket_send(f"Queued {url}. Total={dl_q.qsize()}")
-        if dl_thread and not dl_thread.is_alive():
-            dl_thread = Thread(target=dl_worker)
-            dl_thread.start()
-        return flask.jsonify({"success": True, "msg": f"Queued download {url}"})
-    else:
-        return flask.jsonify({"success": False, "msg": "Failed"})
-
+    future = exec_submit(generate_download, url, PPILE, websocket_send)
+    future.add_done_callback(lambda x: db_scan_recode(PVIDEOS))
+    return flask.jsonify({"success": True, "msg": f"Queued download {url}"})
 
 @socketio.on("connect")
 def test():
     L.debug("Socket connected")
-    socketio.send(f"Downloads queued {dl_q.qsize()}\n")
+    socketio.send(f"Welcome!\n")
 
 
 @socketio.on("message")
 def handle_message(msg):
     L.debug(f"Socket received: {msg}")
 
-
-def download(req):
-    today = date.today().isoformat()
-    url = req["url"]
-    av = req["av"]
-    websocket_send(f"Starting download of {url}")
-    L.info(f"Download {url}")
-    if av == "A":  # audio only
-        cmd = [
-            "yt-dlp",
-            "--no-progress",
-            "--restrict-filenames",
-            "--format",
-            "bestaudio",
-            "-o",
-            f"{PMP3}/{today} %(title)s via %(uploader)s.audio.%(ext)s",
-            "--extract-audio",
-            "--audio-format",
-            "mp3",
-            url,
-        ]
-    else:
-        cmd = [
-            "yt-dlp",
-            "--no-progress",
-            "--restrict-filenames",
-            "--format",
-            "bestvideo[height<=760]+bestaudio",
-            # Often sensible video and audio streams are only available separately,
-            # so we need to merge the resulting file. Recoding a video to mp4
-            # with A+V can take a lot of time, so we opt for an open container format:
-            # Option A: Recode Video
-            # "--recode-video", "mp4",
-            # "--postprocessor-args", "-strict experimental", # allow use of mp4 encoder
-            # Option B: Use container format
-            # "--merge-output-format", "webm",
-            "-o",
-            f"{PPILE}/{today} %(title)s via %(uploader)s.%(ext)s",
-            url,
-            # "--verbose",
-        ]
-    websocket_send("[pile-video] " + " ".join(cmd))
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    for line in proc.stdout:
-        websocket_send("[pile-video] " + line.decode("ASCII").rstrip("\n"))
-    code = proc.wait()
-    proc.stdout.close()
-    try:
-        if code == 0:
-            websocket_send(
-                "[Finished] " + url + ". Remaining: " + json.dumps(dl_q.qsize())
-            )
-        else:
-            websocket_send("[Failed] " + url)
-            return
-    except error as e:
-        L.error(e)
-        websocket_send("[Failed]" + str(e))
-        return
-    mysched.trigger_sweep()
-    websocket_send("Done.")
-
-
-def dl_worker():
-    L.info("Worker starting")
-    while not dl_done:
-        item = dl_q.get()
-        download(item)
-        dl_q.task_done()
-
-
 def exec_interval():
     L.info("Starting update ...")
     subprocess.run(["pip", "install", "-U", "yt-dlp"], capture_output=True, check=True)
     L.info("Update done")
-
 
 class sched:
     def __init__(self):
@@ -439,8 +440,16 @@ class sched:
 def main(port):
     db_init()
 
-    dl_thread = Thread(target=dl_worker)
-    dl_thread.start()
+    # Re-scan poster files + audio files on startup
+    # db_clear_posters()
+    # db_clear_audio()
+
+    db_scan_videos(PVIDEOS)
+    db_scan_duration()
+    db_scan_poster(PCACHE)
+    db_scan_audio(PMP3)
+    db_scan_recode(PVIDEOS)
+
     mysched = sched()
     if NO_SWEEP:
         print("No sweeping no video gallery")
@@ -456,8 +465,7 @@ def main(port):
     # CTRL-C will get us here.
     # Cleanup
     mysched.shutdown()
-    dl_done = True
-    dl_thread.join()
+    executor.shutdown()
 
 if __name__ == "__main__":
     main()

@@ -10,8 +10,9 @@ NO_SWEEP=1
 VIDEOS=/share/hhartmann/garage/Videos/
 PILE=/share/hhartmann/garage/Videos/pile/
 CACHE=/share/hhartmann/garage/Vcache
-TMP=/share/hhartmann/garage/Vtmp
-MP3=./var-test/mp3
+TMP=/tmp/
+MP3=/share/hhartmann/attic/Music/Video
+
 PORT=8083
 
 serve:

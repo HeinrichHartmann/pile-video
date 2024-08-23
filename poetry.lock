@@ -576,23 +576,22 @@ docs = ["sphinx"]
 
 [[package]]
 name = "python-socketio"
-version = "5.11.3"
+version = "5.7.1"
 description = "Socket.IO server and client for Python"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.6"
 files = [
-    {file = "python_socketio-5.11.3-py3-none-any.whl", hash = "sha256:2a923a831ff70664b7c502df093c423eb6aa93c1ce68b8319e840227a26d8b69"},
-    {file = "python_socketio-5.11.3.tar.gz", hash = "sha256:194af8cdbb7b0768c2e807ba76c7abc288eb5bb85559b7cddee51a6bc7a65737"},
+    {file = "python-socketio-5.7.1.tar.gz", hash = "sha256:5011a0cd2545c954d7df09eef7489ec424c93b001cc146599cd72f1dd20f0d46"},
+    {file = "python_socketio-5.7.1-py3-none-any.whl", hash = "sha256:86ee93591c1e781d339d9a61940e62fd6cbc838390653b52a7bcc4f7ce89fe47"},
 ]
 
 [package.dependencies]
 bidict = ">=0.21.0"
-python-engineio = ">=4.8.0"
+python-engineio = ">=4.3.0"
 
 [package.extras]
 asyncio-client = ["aiohttp (>=3.4)"]
 client = ["requests (>=2.21.0)", "websocket-client (>=0.54.0)"]
-docs = ["sphinx"]
 
 [[package]]
 name = "pytz"
@@ -769,13 +768,13 @@ files = [
 
 [[package]]
 name = "werkzeug"
-version = "3.0.3"
+version = "3.0.4"
 description = "The comprehensive WSGI web application library."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "werkzeug-3.0.3-py3-none-any.whl", hash = "sha256:fc9645dc43e03e4d630d23143a04a7f947a9a3b5727cd535fdfe155a17cc48c8"},
-    {file = "werkzeug-3.0.3.tar.gz", hash = "sha256:097e5bfda9f0aba8da6b8545146def481d06aa7d3266e7448e2cccf67dd8bd18"},
+    {file = "werkzeug-3.0.4-py3-none-any.whl", hash = "sha256:02c9eb92b7d6c06f31a782811505d2157837cea66aaede3e217c7c27c039476c"},
+    {file = "werkzeug-3.0.4.tar.gz", hash = "sha256:34f2371506b250df4d4f84bfe7b0921e4762525762bbd936614909fe25cd7306"},
 ]
 
 [package.dependencies]
@@ -835,4 +834,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "46cbbcb0615e4bb90920fd6ea2f1f052c82894b0148284a482e6ec5197670446"
+content-hash = "99aaa3af1b105ef5c0e099ab23bb589017faa56b4bb784961efaffbe892dbca2"
