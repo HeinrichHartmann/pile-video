@@ -1,3 +1,17 @@
+#
+# # Open Ends
+#
+# ## Features
+# - Show duration in gallery
+#
+#
+# ## Nice to Have
+# - Better logging in Web console
+#   - Forward all logs to websocket
+# - Convert "Download" tab into "Logging Console"
+#   - Take https:// entries to search as download requests
+#
+
 from datetime import date, datetime
 from pathlib import Path
 from queue import Queue
@@ -13,32 +27,17 @@ import subprocess
 import shutil
 import click
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
-import subprocess as sp
+import subprocess
 
-from sweeper import sweep
-
-logging.basicConfig(
-    format="%(asctime)s logger=%(name)s lvl=%(levelname)s pid=%(process)d %(message)s"
-)
-logging.getLogger("sweeper").setLevel(logging.INFO)
-
-DEBUG = os.environ.get("DEBUG", False)
-NO_SWEEP = os.environ.get("NO_SWEEP", False)
-
+logging.basicConfig(format="%(asctime)s logger=%(name)s lvl=%(levelname)s pid=%(process)d %(message)s")
 L = logging.getLogger(__name__)
 L.setLevel(logging.INFO)
 
-if DEBUG:
-    L.setLevel(logging.DEBUG)
-    L.debug("DEBUG=true")
-
-L.debug(f"NO_SWEEP={NO_SWEEP}")
-
 def validate(env_var, default_path, create=False):
     path = Path(os.environ.get(env_var, default_path))
-    if DEBUG:
-        L.debug(f"{env_var}={path}")
+    L.debug(f"{env_var}={path}")
     if not path.is_dir():
         if create:
             # mkdir
@@ -48,13 +47,18 @@ def validate(env_var, default_path, create=False):
             L.error(f"{env_var} does not exist: {path}")
     return path
 
-PVIDEOS= validate("VIDEOS", "./videos")
+PVIDEOS = validate("VIDEOS", "./videos")
 PPILE= validate("PILE", "./videos/pile")
 PTRASH = validate("PTRASH", PVIDEOS / "trash/", create=True)
 PMP3= validate("MP3", "./mp3")
 PCACHE= validate("CACHE", "./cache")
 PTMP= validate("TMP", "./tmp")
 PDB = PCACHE / "pile.db"
+DEBUG = os.environ.get("DEBUG", False)
+
+if DEBUG:
+    L.setLevel(logging.DEBUG)
+    L.debug("DEBUG=true")
 
 
 #
@@ -62,14 +66,33 @@ PDB = PCACHE / "pile.db"
 #
 
 def pcall(cmd):
-    L.debug(f"Running {cmd}")
-    p = sp.run(cmd, capture_output=True, check=False)
+    cmd_txt = " ".join(cmd)
+    L.debug(f"Running {cmd_txt}")
+    p = subprocess.run(cmd, capture_output=True, check=False)
     if p.returncode != 0:
-        L.error(f"Failed running {cmd}")
+        L.error(f"Failed running {cmd_txt}")
         L.error(p.stderr)
         L.error(p.stdout)
         return False
     return p
+
+class CallErrror(Exception):
+    pass
+
+def call_sync(argv):
+    cmd_line = " ".join(argv)
+    cmd = argv[0]
+    L.debug(f"Running `{cmd_line}`")
+    with subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as proc:
+        # stderr is redirected stdout, so we see all messages here
+        for line in proc.stdout:
+            L.debug(f"{cmd} > " + line.decode("utf-8").rstrip("\n"))
+        code = proc.wait()
+        if code == 0:
+            L.info(f"{cmd} > Done running `{cmd_line}`.")
+        else:
+            L.error(f"{cmd} > Failed running `{cmd_line}` with code {code}.")
+            raise CallErrror(f"Failed running `{cmd_line}` with code {code}.")
 
 executor = ThreadPoolExecutor(max_workers=4)
 def exec_submit(fn, *args, **kwargs):
@@ -85,6 +108,9 @@ def exec_submit(fn, *args, **kwargs):
 
 #
 # File Actions
+#
+# Those functions directly abstract shell commands we are running (usually against files)
+# They are all prefixed with "generate_"
 #
 def generate_poster(path_src, path_dst):
     pcall([ "ffmpeg", "-n", "-v", "debug", "-i", str(path_src), "-ss", "00:00:20.000", "-vframes", "1", str(path_dst) ])
@@ -121,11 +147,10 @@ def generate_recode(path_src, path_dst):
     assert path_dst.exists()
     path_src.unlink() # rm source
 
-def generate_download(url, output_dir, log):
+def generate_download(url, output_dir):
     today = date.today().isoformat()
-    log(f"Starting download of {url}")
     L.info(f"Download {url}")
-    cmd = [
+    call_sync([
         "yt-dlp",
         "--no-progress",
         "--restrict-filenames",
@@ -134,22 +159,16 @@ def generate_download(url, output_dir, log):
         "-o",
         f"{output_dir}/{today} %(title)s via %(uploader)s.%(ext)s",
         url,
-    ]
-    log("[pile-video] " + " ".join(cmd))
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    for line in proc.stdout:
-        log("[pile-video] " + line.decode("ASCII").rstrip("\n"))
-    code = proc.wait()
-    proc.stdout.close()
-    if code == 0:
-        log(f"[Finished] Downloading {url}.")
-    else:
-        log(f"[Failed] Downloading {url} with code {code}.")
-        for line in proc.stderr:
-            log("[pile-video] " + line.decode("ASCII").rstrip("\n"))
+    ])
 
-def generate_update_ytdl():
-    pcall(["pip", "install", "-U", "yt-dlp"])
+def generate_keep_ytdl_updated():
+    while True:
+        pcall(["pip", "install", "-U", "yt-dlp"])
+        if p := pcall(["yt-dlp", "--version"]):
+            L.info(f"Updated yt-dlp to {p.stdout.decode('utf-8').strip()}")
+        L.info("Updated yt-dlp.")
+        time.sleep(60 * 60 * 12)
+
 
 #
 # Meta Database
@@ -302,9 +321,17 @@ socketio = flaskio.SocketIO(app, cors_allowed_origins="*")
 
 def websocket_send(msg):
     "Sends message to all known web-sockets"
-    L.debug(f"socket > {msg}")
+    # L.debug(f"socket > {msg}")
     socketio.emit("message", msg, broadcast=True)
 
+class SocketLogHandler(logging.Handler):
+    def emit(self, record):
+        websocket_send(self.format(record))
+
+socket_formatter = logging.Formatter("%(asctime)s %(message)s", datefmt="%H:%M:%S")
+socket_log_handler = SocketLogHandler()
+socket_log_handler.setFormatter(socket_formatter)
+L.addHandler(socket_log_handler)
 
 @app.route("/download")
 def serve_download():
@@ -377,8 +404,12 @@ def video_del():
 def q_put():
     payload = flask.request.get_json()
     url = payload.get("url")
-    future = exec_submit(generate_download, url, PPILE, websocket_send)
-    future.add_done_callback(lambda x: db_scan_recode(PVIDEOS))
+    future = exec_submit(generate_download, url, PPILE)
+    def cb(future):
+        future.result() # re-raise exception
+        db_scan_recode(PVIDEOS)
+        db_scan_poster(PCACHE)
+    future.add_done_callback(cb)
     return flask.jsonify({"success": True, "msg": f"Queued download {url}"})
 
 @socketio.on("connect")
@@ -405,8 +436,11 @@ def main(port):
     db_scan_audio(PMP3)
     db_scan_recode(PVIDEOS)
 
-    app.jinja_env.auto_reload = True
-    app.config["TEMPLATES_AUTO_RELOAD"] = True
+    # This will permanently consume one thread from the pool
+    exec_submit(generate_keep_ytdl_updated)
+
+    # app.jinja_env.auto_reload = True
+    # app.config["TEMPLATES_AUTO_RELOAD"] = True
     # suppress werkzeug logging. For some reason we have to do this late in the process.
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
     socketio.run(app, host="0.0.0.0", port=port, debug=DEBUG) # BLOCK
