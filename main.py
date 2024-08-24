@@ -65,17 +65,6 @@ if DEBUG:
 # Thread Pool Management
 #
 
-def pcall(cmd):
-    cmd_txt = " ".join(cmd)
-    L.debug(f"Running {cmd_txt}")
-    p = subprocess.run(cmd, capture_output=True, check=False)
-    if p.returncode != 0:
-        L.error(f"Failed running {cmd_txt}")
-        L.error(p.stderr)
-        L.error(p.stdout)
-        return False
-    return p
-
 class CallErrror(Exception):
     pass
 
@@ -93,6 +82,19 @@ def call_sync(argv):
         else:
             L.error(f"{cmd} > Failed running `{cmd_line}` with code {code}.")
             raise CallErrror(f"Failed running `{cmd_line}` with code {code}.")
+
+def call_capture(argv):
+    cmd_line = " ".join(argv)
+    cmd = argv[0]
+    L.debug(f"Running `{cmd_line}`")
+    try:
+        completed_process = subprocess.run(argv, capture_output=True, check=True)
+    except subprocess.CalledProcessError as e:
+        L.error(f"{cmd} > Failed running `{cmd_line}` with code {e.returncode}.")
+        L.error(f"{cmd} STDOUT > {e.stdout.decode('utf-8')}")
+        L.error(f"{cmd} STDERR > {e.stderr.decode('utf-8')}")
+        raise e
+    return completed_process.stdout.decode("utf-8")
 
 executor = ThreadPoolExecutor(max_workers=4)
 def exec_submit(fn, *args, **kwargs):
@@ -113,26 +115,24 @@ def exec_submit(fn, *args, **kwargs):
 # They are all prefixed with "generate_"
 #
 def generate_poster(path_src, path_dst):
-    pcall([ "ffmpeg", "-n", "-v", "debug", "-i", str(path_src), "-ss", "00:00:20.000", "-vframes", "1", str(path_dst) ])
-    if path_dst.exists():
-        return True
-    L.error(f"Second try for {path_src}. Using first frame.")
-    pcall([ "ffmpeg", "-n", "-v", "fatal", "-i", str(path_src), "-ss", "00:00:00.000", "-vframes", "1", str(path_dst) ])
-    if path_dst.exists():
-        return True
-    return False
+    try:
+        call_sync([ "ffmpeg", "-n", "-v", "error", "-i", str(path_src), "-ss", "00:00:20.000", "-vframes", "1", str(path_dst) ])
+        assert path_dst.exists()
+    except:
+        L.error(f"Second try for {path_src}. Using first frame.")
+        call_sync([ "ffmpeg", "-n", "-v", "fatal", "-i", str(path_src), "-ss", "00:00:00.000", "-vframes", "1", str(path_dst) ])
+    assert path_dst.exists()
 
 def generate_duration(path):
-    p = pcall([ "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path) ])
-    if p:
-        return float(p.stdout)
-    return None
+    return float(
+        call_capture([ "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path) ])
+    )
 
 def generate_audio(path_src, path_dst):
     L.debug(f"Extract audio {path_src}")
     with tempfile.TemporaryDirectory(dir=PTMP) as tmpdir:
         path_tmp: Path = Path(tmpdir) / "tmp.mp3"
-        pcall([ "ffmpeg", "-i", str(path_src), str(path_tmp), ])
+        call_sync([ "ffmpeg", "-i", str(path_src), str(path_tmp), ])
         assert path_tmp.exists()
         shutil.move(path_tmp, path_dst)
     return path_dst.exists()
@@ -141,7 +141,7 @@ def generate_recode(path_src, path_dst):
     L.info(f"Recode {path_src} -> {path_dst}")
     with tempfile.TemporaryDirectory(dir=PTMP) as tmpdir:
         path_tmp: Path = Path(tmpdir) / "tmp.mp4"
-        pcall([ "ffmpeg", "-v", "fatal", "-n", "-i", str(path_src), "-c:a", "aac", str(path_tmp), ])
+        call_sync([ "ffmpeg", "-v", "fatal", "-n", "-i", str(path_src), "-c:a", "aac", str(path_tmp), ])
         assert path_tmp.exists()
         shutil.move(path_tmp, path_dst)
     assert path_dst.exists()
@@ -161,14 +161,17 @@ def generate_download(url, output_dir):
         url,
     ])
 
+
 def generate_keep_ytdl_updated():
     while True:
-        pcall(["pip", "install", "-U", "yt-dlp"])
-        if p := pcall(["yt-dlp", "--version"]):
-            L.info(f"Updated yt-dlp to {p.stdout.decode('utf-8').strip()}")
-        L.info("Updated yt-dlp.")
+        try:
+            call_sync(["pip", "install", "-U", "yt-dlp"])
+            version = call_capture(["yt-dlp", "--version"])
+            L.info(f"Updated yt-dlp to {version}")
+            L.info("Updated yt-dlp.")
+        except Exception as e:
+            L.error(f"Update yt-dlp failed: {e}")
         time.sleep(60 * 60 * 12)
-
 
 #
 # Meta Database
@@ -196,13 +199,13 @@ def db_init():
     """)
     db.commit()
 
-def db_scan_videos(root: Path):
-    _re_date = re.compile("(\d\d\d\d\-\d\d-\d\d).*")
+def db_scan_videos(root: Path, prefix=""):
     VIDEO_EXT = {".mp4"}
     cnt = 0
     db = db_connection()
     for path in root.glob("**/*"):
-        date = _re_date.match(path.name)
+        if not path.name.startswith(prefix):
+            continue
         title = path.name
         video_url = "/video/" + "/".join(path.parts[1:])
         if (path.suffix in VIDEO_EXT) and (not path.name.startswith(".")):
@@ -223,12 +226,14 @@ def set_duration(path: Path):
         L.error(f"Failed to get duration for {path}")
     return False
 
-def db_scan_duration():
+def db_scan_duration(prefix=""):
     db = db_connection()
     res = db.execute("SELECT path FROM video WHERE duration_sec IS NULL")
     cnt = 0
     for row in res:
         path = Path(row[0])
+        if not path.name.startswith(prefix):
+            continue
         exec_submit(set_duration, path)
         cnt += 1
     L.info(f"Queued {cnt} duration computations.")
@@ -245,13 +250,15 @@ def set_poster(path: Path):
     else:
         L.error(f"Failed to generate poster for {path}.")
 
-def db_scan_poster(root: Path):
+def db_scan_poster(root: Path, prefix=""):
     db = db_connection()
     res = db.execute("SELECT path FROM video WHERE poster_url IS NULL")
     cnt_found = 0
     cnt_queued = 0
     for row in res:
         path = Path(row[0])
+        if not path.name.startswith(prefix):
+            continue
         poster_path = root / (path.name + ".png")
         if poster_path.exists():
             cnt_found += 1
@@ -278,7 +285,7 @@ def db_set_audio(path: Path, audio_path: Path):
     db.execute("UPDATE video SET audio_path = ? WHERE path = ?", (str(audio_path), str(path)))
     db.commit()
 
-def db_scan_audio(root):
+def db_scan_audio(root, prefix=""):
     AUDIO_EXTRACT_EXT = {".mp4"}
     db = db_connection()
     res = db.execute("SELECT path FROM video WHERE audio_path IS NULL")
@@ -287,6 +294,8 @@ def db_scan_audio(root):
     for row in res:
         path = Path(row[0])
         audio_path = root / (path.name + ".mp3")
+        if not path.name.startswith(prefix):
+            continue
         if audio_path.exists():
             db.execute("UPDATE video SET audio_path = ? WHERE path = ?", (str(audio_path), str(path)))
             cnt_found += 1
@@ -298,19 +307,23 @@ def db_scan_audio(root):
     db.commit()
     L.info(f"Found {cnt_found} audio files. Queued {cnt_queued} audio extractions.")
 
-def db_scan_recode(root: Path):
+def db_scan_recode(root: Path, prefix=""):
     VIDEO_RECODE_EXT = {".webm", ".mkv"}
     cnt = 0
+    futures = []
     for path in root.glob("**/*"):
         if not path.suffix in VIDEO_RECODE_EXT:
+            continue
+        if not path.name.startswith(prefix):
             continue
         recode_path = root / (path.name + ".mp4")
         if recode_path.exists():
             continue
-        exec_submit(generate_recode, path, recode_path)
+        f = exec_submit(generate_recode, path, recode_path)
+        futures.append(f)
         cnt += 1
     L.info(f"Queued {cnt} videos for recoding.")
-
+    return futures
     
 #
 # Flask App
@@ -358,14 +371,13 @@ def serve_static(filepath):
 @app.route("/gallery")
 def serve_gallery():
     _re_date = re.compile("(\d\d\d\d\-\d\d-\d\d).*")
-    VIDEO_EXT = {".mkv", ".webm", ".mp4"}
+    VIDEO_EXT = {".mp4"}
     paths = [
         (p, _re_date.match(p.name))
         for p in PVIDEOS.glob("**/*")
         if (p.suffix in VIDEO_EXT) and (not p.name.startswith("."))
     ]
     L.debug(f"Found {len(paths)} videos.")
-
     def key(o):
         p, m = o
         if m:
@@ -400,15 +412,49 @@ def video_del():
     L.info(f"Moved to trash: {src} -> {dst}")
     return {"status": "OK"}
 
+from concurrent.futures import Future
+
+def all_done_callback(futures, callback):
+    """
+    Attaches a callback to a list of futures that will execute the
+    callback function once all futures have completed.
+
+    Args:
+        futures (list): A list of Future objects.
+        callback (function): The function to call once all futures are done.
+    """
+    total_futures = len(futures)
+    completed_futures = [0]  # Use a list for mutability
+    def future_callback(fut: Future):
+        nonlocal completed_futures
+        completed_futures[0] += 1
+        if completed_futures[0] == total_futures:
+            callback()
+    for f in futures:
+        f.add_done_callback(future_callback)
+
 @app.route("/download/q", methods=["POST"])
 def q_put():
     payload = flask.request.get_json()
     url = payload.get("url")
+    # Nit: Callbacks are running 3 levels deep here. Better to make this a coro in the future.
     future = exec_submit(generate_download, url, PPILE)
     def cb(future):
         future.result() # re-raise exception
-        db_scan_recode(PVIDEOS)
-        db_scan_poster(PCACHE)
+        # Hack
+        # We don't have access to the exact file name of the download, but we know it start with today's date.
+        # Hence, we re-scan files that start with todays date
+        prefix = date.today().isoformat()
+        recode_futures = db_scan_recode(PVIDEOS, prefix=prefix)
+        def cbb():
+            L.info("CBB!")
+            future.result() # re-raise exception
+            db_scan_videos(PVIDEOS, prefix=prefix)
+            db_scan_poster(PCACHE, prefix=prefix)
+            db_scan_audio(PMP3, prefix=prefix)
+            db_scan_duration(prefix=prefix)
+        all_done_callback(recode_futures, cbb)
+
     future.add_done_callback(cb)
     return flask.jsonify({"success": True, "msg": f"Queued download {url}"})
 
