@@ -56,9 +56,10 @@
                     {% for video in videos %}
                     <div class="vid hidden flex-col justify-between p-4 bg-gray-200 rounded-lg mb-6 shadow-md"
                          style="display: none;"
-                         video-src="{{video["src"]}}"
-                         video-poster="{{video["poster"]}}"
-                         video-name="{{video["name"]}}"
+                         video-src="{{video.video_url}}"
+                         video-poster="{{video.poster_url}}"
+                         video-name="{{video.title_str()}}"
+                         video-duration="{{video.duration_sec}}"
                     >
                     </div>
                     {% endfor %}
@@ -68,11 +69,17 @@
 
         <!-- Queu -->
         <div id="queuebar" class="bg-white shadow fixed bg-gray-800" style="bottom:0; width:100%; heigth:72px;">
-            <div id="queue" class="flex max-w-7xl mx-auto py-2 px-4 sm:px-6 lg:px-8">
+            <div id="queue_container" class="flex max-w-7xl mx-auto py-2 px-4 sm:px-6 lg:px-8">
                 <div class="m-2 p-2 h-10 w-10 flex justify-center"  onclick="play_all()">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="white">
                         <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
                     </svg>
+                </div>
+                <div id="queue" class="flex flex-wrap">
+                    <!-- entries are inserted here  -->
+                </div>
+                <div class="m-2 p-2 h-10 flex justify-center">
+                    <span id="queue_duration" class="text-white"></span>
                 </div>
             </div>
         </div>

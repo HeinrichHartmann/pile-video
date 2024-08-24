@@ -13,6 +13,32 @@ function Lajax(jqXHR, textStatus, errorThrown) {
 
 function isMobile() { return ('ontouchstart' in document.documentElement); }
 
+function duration_to_str(duration) {
+    const hours = Math.floor(duration / 3600);
+    const minutes = Math.floor((duration % 3600) / 60);
+    const seconds = Math.floor(duration % 60);
+    if (hours > 0) {
+        return `${hours}h ${minutes}m ${seconds}s`;
+    }
+    if (minutes > 0) {
+        return `${minutes}m ${seconds}s`;
+    }
+    return `${seconds}s`;
+}
+
+function update_queue_duration() {
+    const items = $("#queue .qitem");
+    let duration = 0;
+    items.each((i, item) => {
+        duration += parseInt(item.getAttribute("video-duration"));
+    });
+    if (duration > 0) {
+        $("#queue_duration").text(duration_to_str(duration));
+    } else {
+        $("#queue_duration").text("");
+    }
+}
+
 function do_delete() {
     const rec = $(event.target).closest(".vid");
     const src = rec.attr("video-src");
@@ -32,7 +58,6 @@ function do_delete() {
     }
 }
 
-
 function do_queue(event) {
     $("#queuebar").removeClass("hidden");
     const vid = $(event.target).closest(".vid");
@@ -43,18 +68,21 @@ function queue_vid(vid) {
     const name = vid.attr("video-name");
     const src = vid.attr("video-src");
     const poster = vid.attr("video-poster");
+    const duration = vid.attr("video-duration");
     $("#queue").append($(`
     <div
-     video-name="${name}" video-src="${src}"
+     video-name="${name}" video-src="${src}" video-duration="${duration}"
      class="qitem m-2 p-2 h-10 w-10 bg-gray-100 border-2 rounded border-gray-500 align-middle text-center"
      style="background-image:url('${poster}'); background-size: 200%; background-position: center; background-repeat: no-repeat;"
      onclick="remove_target()"
     ></div>
-  `));
+    `));
+    update_queue_duration();
 }
 
 function remove_target() {
     event.target.remove();
+    update_queue_duration();
 }
 
 function queue_first() {
@@ -62,6 +90,7 @@ function queue_first() {
     if (gallery_videos.length > 0) {
         queue_vid($(gallery_videos[0]));
     }
+    update_queue_duration();
 }
 
 function queue_peek() {
@@ -83,6 +112,7 @@ function queue_remove() {
     }
     const i = items[0];
     i.remove();
+    update_queue_duration();
 }
 
 function player_close() {
@@ -183,6 +213,8 @@ function gallery_show(pattern, matches_max) {
         var name = rec.getAttribute("video-name").replace(/[_ ]+/g, ' ');
         var src = rec.getAttribute("video-src");
         var poster = rec.getAttribute("video-poster");
+        var duration = rec.getAttribute("video-duration");
+        var duration_str = duration_to_str(duration);
         if (pmatch(text)) {
             matches++;
             if (matches > matches_max) {
@@ -194,7 +226,7 @@ function gallery_show(pattern, matches_max) {
                    <div class="preview">
                      <img src="${poster}" class="w-full" onclick="do_click(event)">
                      <div class="py-2 pt-4 text-gray-900">
-                         <p>${name}</p>
+                         <p>${name} (${duration_str})</p>
                      </div>
                    </div>
                </div>
@@ -229,7 +261,6 @@ $(() => {
         return null;
     });
     window.onscroll = function(ev) {
-        console.log(["Extend!", matches_max]);
         if ((window.innerHeight + window.scrollY) >= 0.95 * document.body.offsetHeight) {
             matches_max += 10;
             gallery_show(pattern, matches_max);

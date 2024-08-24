@@ -1,10 +1,6 @@
 #
 # # Open Ends
 #
-# ## Features
-# - Show duration in gallery
-#
-#
 # ## Nice to Have
 # - Better logging in Web console
 #   - Forward all logs to websocket
@@ -29,7 +25,6 @@ import click
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
-import subprocess
 
 logging.basicConfig(format="%(asctime)s logger=%(name)s lvl=%(levelname)s pid=%(process)d %(message)s")
 L = logging.getLogger(__name__)
@@ -59,6 +54,27 @@ DEBUG = os.environ.get("DEBUG", False)
 if DEBUG:
     L.setLevel(logging.DEBUG)
     L.debug("DEBUG=true")
+
+from concurrent.futures import Future
+
+def all_done_callback(futures, callback):
+    """
+    Attaches a callback to a list of futures that will execute the
+    callback function once all futures have completed.
+
+    Args:
+        futures (list): A list of Future objects.
+        callback (function): The function to call once all futures are done.
+    """
+    total_futures = len(futures)
+    completed_futures = [0]  # Use a list for mutability
+    def future_callback(fut: Future):
+        nonlocal completed_futures
+        completed_futures[0] += 1
+        if completed_futures[0] == total_futures:
+            callback()
+    for f in futures:
+        f.add_done_callback(future_callback)
 
 
 #
@@ -174,6 +190,25 @@ def generate_keep_ytdl_updated():
         time.sleep(60 * 60 * 12)
 
 #
+# Video Data Class
+#
+class Video:
+    def __init__(self, video_dict):
+        self.path = Path(video_dict["path"])
+        self.title = video_dict["title"]
+        self.date = video_dict["date"]
+        self.duration_sec = video_dict["duration_sec"]
+        self.video_url = video_dict["video_url"]
+        self.poster_url = video_dict["poster_url"]
+
+    def title_str(self):
+        name = Path(self.path).name
+        # remove 1-3 letter suffixes .xxx
+        while m := re.match(r"(.*)\.\w{1,4}$", name):
+            name = m.group(1)
+        return name
+
+#
 # Meta Database
 #
 import sqlite3
@@ -182,6 +217,7 @@ def db_connection():
     thread_local = threading.local()
     if not hasattr(thread_local, 'sqlite_db'):
         thread_local.sqlite_db = sqlite3.connect(PDB)
+        thread_local.sqlite_db.row_factory = sqlite3.Row
     return thread_local.sqlite_db
 
 def db_init():
@@ -190,6 +226,7 @@ def db_init():
         CREATE TABLE IF NOT EXISTS video (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             path TEXT UNIQUE,
+            date TIMESTAMP,
             title TEXT,
             duration_sec INTEGER,
             video_url TEXT,
@@ -199,18 +236,34 @@ def db_init():
     """)
     db.commit()
 
+def db_iter_videos():
+    db = db_connection()
+    res = db.execute("SELECT path, title, duration_sec, video_url, poster_url, date FROM video ORDER BY date DESC")
+    for row in res:
+        yield Video(dict(row))
+
+
+_re_date = re.compile("(\d\d\d\d\-\d\d-\d\d).*")
 def db_scan_videos(root: Path, prefix=""):
     VIDEO_EXT = {".mp4"}
     cnt = 0
     db = db_connection()
     for path in root.glob("**/*"):
+        if path.name.startswith("."):
+            continue
+        if not path.suffix in VIDEO_EXT:
+            continue
         if not path.name.startswith(prefix):
             continue
+
         title = path.name
-        video_url = "/video/" + "/".join(path.parts[1:])
-        if (path.suffix in VIDEO_EXT) and (not path.name.startswith(".")):
-            db.execute("INSERT OR IGNORE INTO video (path, video_url, title) VALUES (?, ?, ?)", (str(path), video_url, title))
-            cnt += 1
+        video_url = "/video/" + "/".join(path.relative_to(root).parts)
+        date = None
+        if m := _re_date.match(path.name):
+            date = m.group(1)
+            title = path.name[len(date) + 1:]
+        db.execute("INSERT OR IGNORE INTO video (path, video_url, title, date) VALUES (?, ?, ?, ?)", (str(path), video_url, title, date))
+        cnt += 1
     db.commit()
     L.info(f"Found {cnt} videos.")
 
@@ -325,6 +378,12 @@ def db_scan_recode(root: Path, prefix=""):
     L.info(f"Queued {cnt} videos for recoding.")
     return futures
     
+def db_video_remove(path: Path):
+    db = db_connection()
+    result = db.execute("DELETE FROM video WHERE path = ?", (str(path),))
+    L.info(f"Removed {result.rowcount} from DB for {path}.")
+    db.commit()
+
 #
 # Flask App
 #
@@ -370,35 +429,7 @@ def serve_static(filepath):
 @app.route("/")
 @app.route("/gallery")
 def serve_gallery():
-    _re_date = re.compile("(\d\d\d\d\-\d\d-\d\d).*")
-    VIDEO_EXT = {".mp4"}
-    paths = [
-        (p, _re_date.match(p.name))
-        for p in PVIDEOS.glob("**/*")
-        if (p.suffix in VIDEO_EXT) and (not p.name.startswith("."))
-    ]
-    L.debug(f"Found {len(paths)} videos.")
-    def key(o):
-        p, m = o
-        if m:
-            return "y" + p.name
-        else:
-            return "x"
-
-    paths = sorted(paths, reverse=True, key=key)
-    def path_to_video(path):
-        return "/video/" + "/".join(path.relative_to(PVIDEOS).parts)
-    def path_to_poster(path):
-        return "/poster/" + path.name + ".png"
-
-    videos = [
-        {
-            "name": o[0].name,
-            "src": path_to_video(o[0]),
-            "poster": path_to_poster(o[0])
-        }
-        for o in paths
-    ]
+    videos = list(db_iter_videos())
     return flask.render_template("gallery.tpl", videos=videos)
 
 
@@ -410,28 +441,8 @@ def video_del():
     assert (PVIDEOS / src).exists()
     shutil.move(PVIDEOS / src, dst)
     L.info(f"Moved to trash: {src} -> {dst}")
+    db_video_remove(PVIDEOS / src)
     return {"status": "OK"}
-
-from concurrent.futures import Future
-
-def all_done_callback(futures, callback):
-    """
-    Attaches a callback to a list of futures that will execute the
-    callback function once all futures have completed.
-
-    Args:
-        futures (list): A list of Future objects.
-        callback (function): The function to call once all futures are done.
-    """
-    total_futures = len(futures)
-    completed_futures = [0]  # Use a list for mutability
-    def future_callback(fut: Future):
-        nonlocal completed_futures
-        completed_futures[0] += 1
-        if completed_futures[0] == total_futures:
-            callback()
-    for f in futures:
-        f.add_done_callback(future_callback)
 
 @app.route("/download/q", methods=["POST"])
 def q_put():
@@ -447,7 +458,6 @@ def q_put():
         prefix = date.today().isoformat()
         recode_futures = db_scan_recode(PVIDEOS, prefix=prefix)
         def cbb():
-            L.info("CBB!")
             future.result() # re-raise exception
             db_scan_videos(PVIDEOS, prefix=prefix)
             db_scan_poster(PCACHE, prefix=prefix)
@@ -485,11 +495,12 @@ def main(port):
     # This will permanently consume one thread from the pool
     exec_submit(generate_keep_ytdl_updated)
 
+    # Autoreload
     # app.jinja_env.auto_reload = True
     # app.config["TEMPLATES_AUTO_RELOAD"] = True
     # suppress werkzeug logging. For some reason we have to do this late in the process.
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
-    socketio.run(app, host="0.0.0.0", port=port, debug=DEBUG) # BLOCK
+    socketio.run(app, host="0.0.0.0", port=port, debug=DEBUG, use_reloader=False) # BLOCK
 
     # CTRL-C will get us here.
     # Cleanup
