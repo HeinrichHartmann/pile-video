@@ -601,42 +601,6 @@ def q_put():
     return flask.jsonify({"success": True, "msg": f"Queued download {url}"})
 
 
-@app.route("/podcast.xml")
-def serve_podcast():
-    db = db_connection()
-    res = db.execute("SELECT * FROM video WHERE audio_path IS NOT NULL")
-    videos = res.fetchall()
-    xml_head = """
-    <?xml version="1.0" encoding="UTF-8"?>
-    <rss version="2.0"
-        xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
-      <channel>
-        <title>Pile Video</title>
-        <itunes:owner><itunes:email>heinrich@heinrichhartmann.com</itunes:email></itunes:owner>
-        <itunes:author>Heinrich</itunes:author>
-        <description>My video libraru</description>
-        <language>en-us</language>
-        <link>https://video.heinrichhartmann.net/</link>
-    """
-    xml_items = []
-    for row in videos:
-        xml_items.append(
-            f"""
-        <item>
-            <title>{row['title']}</title>
-            <enclosure url="{flask.url_for('serve_audio', filepath=row['audio_path'], _external=True)}" type="audio/mpeg" />
-            <pubDate>{row['date']}</pubDate>
-            <guid>{row['path']}</guid>
-            <itunes:duration>{row['duration_sec']}</itunes:duration>
-            <itunes:image href="{row['poster_url']}" />
-            <itunes:subtitle>{row['title']}</itunes:subtitle>
-        </item>"""
-        )
-    xml_tail = """</channel></rss>"""
-    xml = xml_head + "\n".join(xml_items) + xml_tail
-    return flask.Response(xml, mimetype="application/xml")
-
-
 @socketio.on("connect")
 def test():
     L.debug("Socket connected")
