@@ -377,7 +377,7 @@ def db_scan_recode(root: Path, prefix=""):
         cnt += 1
     L.info(f"Queued {cnt} videos for recoding.")
     return futures
-    
+
 def db_video_remove(path: Path):
     db = db_connection()
     result = db.execute("DELETE FROM video WHERE path = ?", (str(path),))
@@ -416,6 +416,11 @@ def serve_video(filepath):
     return flask.send_from_directory(PVIDEOS , filepath)
 
 
+@app.route("/audio/<path:filepath>")
+def serve_audio(filepath):
+    base_path = PMP3.resolve
+    return flask.send_from_directory(PMP3 , filepath)
+
 @app.route("/poster/<path:filepath>")
 def serve_poster(filepath):
     return flask.send_from_directory(PCACHE, filepath)
@@ -444,6 +449,7 @@ def video_del():
     db_video_remove(PVIDEOS / src)
     return {"status": "OK"}
 
+
 @app.route("/download/q", methods=["POST"])
 def q_put():
     payload = flask.request.get_json()
@@ -468,6 +474,40 @@ def q_put():
     future.add_done_callback(cb)
     return flask.jsonify({"success": True, "msg": f"Queued download {url}"})
 
+
+@app.route("/podcast.xml")
+def serve_podcast():
+    db = db_connection()
+    res = db.execute("SELECT * FROM video WHERE audio_path IS NOT NULL")
+    videos = res.fetchall()
+    xml_head = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <rss version="2.0"
+        xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+      <channel>
+        <title>Pile Video</title>
+        <itunes:owner><itunes:email>heinrich@heinrichhartmann.com</itunes:email></itunes:owner>
+        <itunes:author>Heinrich</itunes:author>
+        <description>My video libraru</description>
+        <language>en-us</language>
+        <link>https://video.heinrichhartmann.net/</link>
+    """
+    xml_items = []
+    for row in videos:
+        xml_items.append(f"""
+        <item>
+            <title>{row['title']}</title>
+            <enclosure url="{flask.url_for('serve_audio', filepath=row['audio_path'], _external=True)}" type="audio/mpeg" />
+            <pubDate>{row['date']}</pubDate>
+            <guid>{row['path']}</guid>
+            <itunes:duration>{row['duration_sec']}</itunes:duration>
+            <itunes:image href="{row['poster_url']}" />
+            <itunes:subtitle>{row['title']}</itunes:subtitle>
+        </item>""")
+    xml_tail = """</channel></rss>"""
+    xml = xml_head + "\n".join(xml_items) + xml_tail
+    return flask.Response(xml, mimetype="application/xml")
+
 @socketio.on("connect")
 def test():
     L.debug("Socket connected")
@@ -478,19 +518,22 @@ def handle_message(msg):
     L.debug(f"Socket received: {msg}")
 
 @click.command()
-@click.option("-p", "--port", default=8083, help="Port to listen on", envvar="PORT")
-def main(port):
+@click.option("-p", "--port", default=8080, help="Port to listen on", envvar="PORT")
+@click.option("-q", "--quick", is_flag=True, help="Quick start, skip scanning")
+def main(port, quick):
     db_init()
 
-    # Re-scan for poster & audio files on startup
-    db_clear_posters()
-    db_clear_audio()
+    if not quick:
+        # Re-scan for poster & audio files on startup
+        db_clear_posters()
+        db_clear_audio()
 
     db_scan_videos(PVIDEOS)
-    db_scan_duration()
     db_scan_poster(PCACHE)
     db_scan_audio(PMP3)
-    db_scan_recode(PVIDEOS)
+    if not quick:
+        db_scan_duration()
+        db_scan_recode(PVIDEOS)
 
     # This will permanently consume one thread from the pool
     exec_submit(generate_keep_ytdl_updated)
@@ -500,7 +543,12 @@ def main(port):
     # app.config["TEMPLATES_AUTO_RELOAD"] = True
     # suppress werkzeug logging. For some reason we have to do this late in the process.
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
-    socketio.run(app, host="0.0.0.0", port=port, debug=DEBUG, use_reloader=False) # BLOCK
+    socketio.run(app,
+                 host="0.0.0.0",
+                 port=port,
+                 debug=DEBUG,
+                 allow_unsafe_werkzeug=True,
+                 use_reloader=False) # BLOCK
 
     # CTRL-C will get us here.
     # Cleanup
